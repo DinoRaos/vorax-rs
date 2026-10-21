@@ -30,14 +30,25 @@ game is in front.
 - **The game's log turned on.** In the game: Esc → **Account Related** → **Enable Log**, then log out and back
   in. The overlay finds `UE_game.log` through Steam (or start it with `--log <path>`). The log only says *when*
   the board changes; everything else is read from the picture.
-- **To build:** [Rust](https://rustup.rs) (stable) and the Visual Studio Build Tools with "Desktop development
-  with C++".
-- **To sync with upstream** (optional, see below): git and Node.js.
 
 Card names are read with Windows' built-in text recognition: English when that language is installed, otherwise
 your Windows language (tested with German). Without it, the pictures decide.
 
-## Build and run
+## Download
+
+Get `vorax-overlay.exe` from the [latest release](https://github.com/DinoRaos/vorax-rs/releases/latest) and run
+it; there is nothing to install. Windows may say "Windows protected your PC" because the program isn't signed:
+click **More info** → **Run anyway**. The release notes list each file's SHA-256 if you want to check your
+download.
+
+A downloaded overlay keeps its data current by itself (see **Updates** below). When upstream changes a card
+rule, the tray menu says so, and the fix comes with a new release (or a build from source, which can sync and
+rebuild itself).
+
+## Build from source
+
+You need [Rust](https://rustup.rs) (stable) and the Visual Studio Build Tools with "Desktop development with C++";
+for syncing with upstream (see below), also git and Node.js.
 
 ```powershell
 git clone https://github.com/DinoRaos/vorax-rs.git
@@ -45,6 +56,8 @@ cd vorax-rs
 cargo build --release                          # a few minutes the first time
 .\target\release\vorax-overlay.exe
 ```
+
+## Use
 
 Start a Vorax game and the marks appear when the cards settle. Other ways to start it:
 
@@ -72,8 +85,8 @@ offer this game, the level's. (Upstream counts them as 0 on every potion board, 
 **Updates.** At start and every 3 hours the overlay fetches upstream's newest data (odds, board value, instrument
 strengths, icons players named), checks it as strictly as a build checks its own, and keeps it in
 `%APPDATA%\VoraxRs\data`; it restarts itself to use it while no advice is showing. Card and reader *rules* are
-code: when upstream changes one, the tray menu says the port needs updating. **Sync and rebuild now** in the tray
-menu runs `scripts/sync.ps1` in the background with a progress card (`--sync` runs it in the console); when
+code: when upstream changes one, the tray menu says the port needs updating. In a build from source, **Sync and
+rebuild now** in the tray menu runs `scripts/sync.ps1` in the background with a progress card (`--sync` runs it in the console); when
 parity passes it rebuilds the overlay and offers to restart into the new build, and when it fails, the overlay
 keeps its build and the card shows the output.
 

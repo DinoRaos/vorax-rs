@@ -33,12 +33,11 @@ pub enum Outcome {
     Failed(String),
 }
 
-/// The repository the overlay was built in (where scripts/sync.ps1 is): above target\release when it runs from
-/// there, else where it was compiled.
+/// The repository the overlay was built in (where scripts/sync.ps1 is): above target\release, where it runs from.
+/// A downloaded overlay has none, and offers no sync (the build's own path isn't kept in the program).
 pub fn root() -> Option<PathBuf> {
-    let from_exe = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.parent()?.parent()?.to_path_buf()));
-    let built = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    [from_exe, Some(built)].into_iter().flatten().find(|r| r.join("scripts").join("sync.ps1").is_file())
+    let root = std::env::current_exe().ok()?.parent()?.parent()?.parent()?.to_path_buf();
+    root.join("scripts").join("sync.ps1").is_file().then_some(root)
 }
 
 /// The overlay as the rebuild leaves it.

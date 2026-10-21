@@ -58,6 +58,18 @@ pub fn run(args: &[String]) {
             menu::Row::Separator,
             menu::Row::Action { id: 0, label: "Quit".into(), shortcut: "Ctrl+Alt+Q".into() },
         ];
+        // the menu as it usually is: the game's log on, nothing to sync
+        let plain = args.iter().any(|a| a == "--plain");
+        let rows = if plain {
+            let mut head = vec![
+                menu::Row::Header { title: "Vorax overlay".into(), status: format!("Odds of {}", vorax::data().odds) },
+                menu::Row::Text("Game log on: boards are read by themselves".into()),
+            ];
+            head.extend(rows.into_iter().skip(4));
+            head
+        } else {
+            rows
+        };
         let card = args.iter().any(|a| a == "--card");
         let rows = if card {
             vec![
@@ -96,7 +108,7 @@ pub fn run(args: &[String]) {
         } else {
             rows
         };
-        let hover = if card { Some((3, Some(1))) } else { Some((7, Some(4))) };
+        let hover = if card { Some((3, Some(1))) } else if plain { None } else { Some((7, Some(4))) };
         let pm = menu::preview(rows, std::rc::Rc::new(fonts), 1.5, hover);
         // onto a mid-grey, as a desktop would show it
         let mut rgba = pm.data().to_vec();
