@@ -7,6 +7,8 @@ A small Windows overlay for **Surgical Preparation**, the Vorax minigame of Torc
 follows your game, reads the board when it changes and marks the move the Solver advises: the card (or the
 reroll) to take, the tanks to target, and how often that line reaches 950k.
 
+![The overlay during a Vorax round: a cyan outline on the Xeno-Hormone card, a diamond above tank 1, and the pill "Xeno-Hormone → tank 1 · 38% reach 950k" at the top](docs/overlay.jpg)
+
 Under the overlay is a Rust port of [tidewarden/tli-vorax-simulator](https://github.com/tidewarden/tli-vorax-simulator)'s
 game engine, bots, Solver and screen reader. It plays exactly like the TypeScript original, checked step by step
 against traces recorded from it, and it is about 130× faster on one core.
@@ -66,6 +68,7 @@ Start a Vorax game and the marks appear when the cards settle. Other ways to sta
 .\target\release\vorax-overlay.exe --selftest    # checks the log, the game window, a capture and the text reader
 .\target\release\vorax-overlay.exe --demo        # a sample board's marks over the game for 15 s (switch to the game)
 .\target\release\vorax-overlay.exe --preview shot.png out.png   # the marks drawn onto a saved screenshot
+.\target\release\vorax-overlay.exe --frames D:\frames   # also saves every picture it reads (for reporting a misread)
 ```
 
 | Key | |
@@ -74,9 +77,14 @@ Start a Vorax game and the marks appear when the cards settle. Other ways to sta
 | Ctrl+Alt+X | read the board now |
 | Ctrl+Alt+Q | quit |
 
+<img src="docs/menu.png" alt="The tray menu: odds in use, game log status, Show overlay, Read the board now, Intern Shelley level 1-6, marker colour, Check for updates, Open the debug log, Quit" width="252" align="right">
+
 The tray icon's menu has the same, plus your **Intern Shelley level** (1–6, remembered), the marks' colour, the
 odds in use, "Check for updates" and the debug log (`%APPDATA%\VoraxRs\overlay.log`, with each board read and the
 advice given: attach it when reporting a misread board).
+
+When a card is still flying as the board is read, the overlay looks again a moment later (up to three times),
+and hides its marks rather than leave ones for a board that's gone.
 
 **Intern Shelley level.** It sets the instrument rerolls the advice counts on while they aren't on screen: a
 potion board doesn't show them, so the overlay carries the count last read on an instrument offer, and before any

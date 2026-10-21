@@ -188,7 +188,7 @@ pub fn run(args: &[String]) {
             return;
         }
     };
-    let opts = worker::Options { log: arg::<String>(args, "--log").map(PathBuf::from), shelley: settings.shelley, ocr: settings.ocr };
+    let opts = worker::Options { log: arg::<String>(args, "--log").map(PathBuf::from), shelley: settings.shelley, ocr: settings.ocr, frames: arg::<String>(args, "--frames").map(PathBuf::from) };
     // what the start's check found, for the tray menu (data it fetched is in use already)
     let _ = to_ui.send(update::status(first.map(|c| match c {
         update::Checked::Fetched(m) if fetched.is_some() => update::Checked::Current(m),

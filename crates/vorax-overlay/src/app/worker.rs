@@ -15,10 +15,16 @@ pub struct Options {
     pub log: Option<PathBuf>,
     pub shelley: i32,
     pub ocr: bool,
+    /// --frames <dir>: every picture read is saved there, named by what came of it
+    pub frames: Option<PathBuf>,
 }
 
 /// How long after a pick the board is looked at again, for the new icon to have landed in the panel.
 const RELOOK: Duration = Duration::from_millis(1500);
+/// A card still in flight: the board is looked at again this much later, this many times, before its marks are
+/// hidden (the board they were for is gone, and no log line may come to say when the new one has landed).
+const RETRY: Duration = Duration::from_millis(700);
+const RETRIES: u32 = 3;
 
 /// A line the game writes only with its log on (Esc → Account Related → Enable Log): with it on, one comes at
 /// least every ~10 s (pings, sounds, clicks); with it off, only a few as the game starts.
@@ -55,12 +61,18 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     } else {
         None
     };
+    if let Some(dir) = &opts.frames {
+        note(&format!("saving every picture read to {}", dir.display()));
+    }
     let mut pipe = Pipeline::new(opts.shelley);
     let mut follower: Option<Follower> = None;
     let mut looked_for_log = Instant::now() - Duration::from_secs(60);
     let mut settler = Settler::default();
     let mut last_poll = Instant::now() - Duration::from_secs(1);
     let mut relook_at: Option<Instant> = None;
+    // a look again at a card in flight: when, for which trigger, and how many have been made
+    let mut retry: Option<(Instant, Option<&'static str>)> = None;
+    let mut retries = 0;
     let mut was_over = false;
     // the game's log: when it last had a game line, since when the game is open, and what the window was told
     let mut game_line_at: Option<Instant> = None;
@@ -116,6 +128,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             if settler.over && !was_over {
                 note("the game's Vorax screen closed");
                 send(ToUi::Clear);
+                retry = None;
             }
             was_over = settler.over;
         }
@@ -147,14 +160,29 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         }
         let due = settler.due(now_ms());
         let relook = relook_at.is_some_and(|t| Instant::now() >= t);
-        if due.is_some() || manual || relook {
+        let again = retry.filter(|(t, _)| Instant::now() >= *t);
+        if due.is_some() || manual || relook || again.is_some() {
             relook_at = None;
+            retry = None;
             let trigger = match due {
                 Some(Trigger::Screen) => Some("screen"),
                 Some(_) => Some("board"),
-                None => None,
+                None => again.and_then(|(_, t)| t),
             };
-            read(&capturer, ocr.as_ref(), &mut pipe, trigger, manual || relook, &send);
+            if due.is_some() || manual {
+                retries = 0;
+            }
+            let animating = read(&capturer, ocr.as_ref(), &mut pipe, trigger, manual || relook, opts.frames.as_deref(), &send);
+            if !animating {
+                retries = 0;
+            } else if retries < RETRIES {
+                retries += 1;
+                retry = Some((Instant::now() + RETRY, trigger));
+            } else {
+                retries = 0;
+                note(&format!("still a card in flight after {RETRIES} more looks: the marks are hidden until the next board"));
+                send(ToUi::Clear);
+            }
             if pipe.wants_relook() {
                 relook_at = Some(Instant::now() + RELOOK);
             }
@@ -176,10 +204,11 @@ fn last_game_line_age(path: &Path) -> Option<Duration> {
     Some(Duration::from_millis((now - at).max(0.0) as u64))
 }
 
-fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, now: bool, send: &dyn Fn(ToUi)) {
+/// Takes a picture, reads it and advises; true when a card was in flight (nothing read).
+fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, now: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> bool {
     let Some(game) = find_game_window() else {
         note("the game's window isn't open");
-        return;
+        return false;
     };
     send(ToUi::Busy);
     let t = Instant::now();
@@ -189,18 +218,25 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Ok(None) => {
             note("no picture from the game's window");
             send(ToUi::Unbusy);
-            return;
+            return false;
         }
         Err(e) => {
             note(&format!("capture failed: {e}"));
             send(ToUi::Unbusy);
-            return;
+            return false;
         }
     };
     let grabbed = t.elapsed().as_millis();
     let mut read_text = |img: &vorax_scan::pixels::Img| ocr.and_then(|o| o.read(img).ok()).unwrap_or_default();
     let reader: crate::pipeline::TextReader = if ocr.is_some() { Some(&mut read_text) } else { None };
-    match pipe.run(&frame, trigger, reader) {
+    let outcome = pipe.run(&frame, trigger, reader);
+    let kind = match &outcome {
+        Outcome::Advice { .. } => "board",
+        Outcome::Animating => "animating",
+        Outcome::NotGame => "notgame",
+    };
+    let animating = matches!(outcome, Outcome::Animating);
+    match outcome {
         Outcome::Advice { reading, advice, plan, read_ms } => {
             let mv = plan.pill.as_ref().map_or("(nothing to advise)".to_string(), |p| format!("{} · {}", p.main, p.sub));
             note(&format!(
@@ -215,7 +251,7 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
             send(ToUi::Show(plan, w, h));
         }
         Outcome::Animating => {
-            note("a card was flying off: the last advice stands");
+            note(&format!("{}: picture {grabbed} ms, a card was flying off: the last advice stands", trigger.unwrap_or("manual")));
             send(ToUi::Unbusy);
         }
         Outcome::NotGame => {
@@ -223,4 +259,13 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
             send(ToUi::Clear);
         }
     }
+    if let Some(dir) = frames {
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+        let path = dir.join(format!("{ms}-{}-{kind}.png", trigger.unwrap_or("manual")));
+        let saved = std::fs::create_dir_all(dir).map_err(|e| e.to_string()).and_then(|_| crate::pipeline::encode_png(&path, frame.width as u32, frame.height as u32, &frame.data));
+        if let Err(e) = saved {
+            note(&format!("frame not saved: {e}"));
+        }
+    }
+    animating
 }
