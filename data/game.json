@@ -1,0 +1,677 @@
+{
+  "commit": "48d1b75f1cc87557ab1578ad6542437a3e13e0e3",
+  "odds": "2026-10-21",
+  "supremeChance": 0.013,
+  "defaultSettings": {
+    "potionRefreshes": 3,
+    "instrumentRefreshes": 2
+  },
+  "potions": [
+    {
+      "id": 0,
+      "name": "Probiotic Enzyme Solution",
+      "rarity": "rare",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 1,
+      "name": "Slough Solution",
+      "rarity": "rare",
+      "targeting": "select1to2",
+      "hasEffect": true
+    },
+    {
+      "id": 2,
+      "name": "Leptomeningeal Solution",
+      "rarity": "rare",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 3,
+      "name": "Osteolytic Ointment",
+      "rarity": "rare",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 4,
+      "name": "Cleansing Ointment",
+      "rarity": "rare",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 5,
+      "name": "Fresh Spinal Powder",
+      "rarity": "rare",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 6,
+      "name": "Petrified Spinal Solution",
+      "rarity": "rare",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 7,
+      "name": "Viviparous Hormone",
+      "rarity": "magic",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 8,
+      "name": "Eggshell Powder",
+      "rarity": "magic",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 9,
+      "name": "Brain Fog Tincture",
+      "rarity": "magic",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 10,
+      "name": "Osteogenic Powder",
+      "rarity": "magic",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 11,
+      "name": "Gray Matter Spinal Solution",
+      "rarity": "magic",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 12,
+      "name": "Hollow Spinal Solution",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 13,
+      "name": "Green Bile Solution",
+      "rarity": "magic",
+      "targeting": "select1to2",
+      "hasEffect": true
+    },
+    {
+      "id": 14,
+      "name": "Compound Leech Solution",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 15,
+      "name": "Digestive Enzyme Solution",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 16,
+      "name": "Vivigenic Powder",
+      "rarity": "magic",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 17,
+      "name": "Potent Xenopurge Powder",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 18,
+      "name": "Xenopurge Powder",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 19,
+      "name": "Pure Leech Solution",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 20,
+      "name": "Bewitching Tincture",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 21,
+      "name": "Mutagenic Powder",
+      "rarity": "magic",
+      "targeting": "select1to2",
+      "hasEffect": true
+    },
+    {
+      "id": 22,
+      "name": "Viscous Bile Solution",
+      "rarity": "magic",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 23,
+      "name": "Slender-Limb Powder - Pest",
+      "rarity": "normal",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 24,
+      "name": "Twin Hormone - Pest",
+      "rarity": "normal",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 25,
+      "name": "Spinal Solution - Agito",
+      "rarity": "normal",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 26,
+      "name": "Anesthetic Tincture - Agito",
+      "rarity": "normal",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 27,
+      "name": "Slender-Limb Powder - Bone Sentry",
+      "rarity": "normal",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 28,
+      "name": "Twin Hormone - Bone Sentry",
+      "rarity": "normal",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 29,
+      "name": "Anesthetic Tincture - Aemberon",
+      "rarity": "normal",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 30,
+      "name": "Spinal Solution - Aemberon",
+      "rarity": "normal",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 31,
+      "name": "Xeno-Hormone",
+      "rarity": "normal",
+      "targeting": "select1to2",
+      "hasEffect": true
+    },
+    {
+      "id": 32,
+      "name": "Targeted Xeno-Hormone",
+      "rarity": "normal",
+      "targeting": "select1",
+      "hasEffect": true
+    },
+    {
+      "id": 33,
+      "name": "Potion Kit (Large)",
+      "rarity": "rare",
+      "targeting": {
+        "box": 5
+      },
+      "hasEffect": false
+    },
+    {
+      "id": 34,
+      "name": "Potion Kit (Small)",
+      "rarity": "rare",
+      "targeting": {
+        "box": 3
+      },
+      "hasEffect": false
+    },
+    {
+      "id": 40,
+      "name": "Rare Potion Kit (Small)",
+      "rarity": "rare",
+      "targeting": {
+        "box": 3
+      },
+      "hasEffect": false
+    },
+    {
+      "id": 35,
+      "name": "Compound Revitalizing Pill",
+      "rarity": "supreme",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 36,
+      "name": "Fast-Acting Heart Tonic",
+      "rarity": "supreme",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 37,
+      "name": "Plague Quarter Peat Poultice",
+      "rarity": "supreme",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 38,
+      "name": "Insect Attractant",
+      "rarity": "supreme",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 39,
+      "name": "Purest Holy Water",
+      "rarity": "supreme",
+      "targeting": "auto",
+      "hasEffect": true
+    },
+    {
+      "id": 41,
+      "name": "Rousing Salts",
+      "rarity": "supreme",
+      "targeting": "auto",
+      "hasEffect": true
+    }
+  ],
+  "instruments": [
+    {
+      "id": 1,
+      "name": "Chrysalis Specimen",
+      "pool": "basic",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 2,
+      "name": "Incubation Sac",
+      "pool": "basic",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "add"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "name": "Hyperplastic Frontal Lobe",
+      "pool": "basic",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 4,
+      "name": "Hypertrophic Pituitary",
+      "pool": "basic",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 5,
+      "name": "Adherent Metatarsals",
+      "pool": "basic",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "remove"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "name": "Contracted Claws",
+      "pool": "basic",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "remove"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "name": "Aberrant Sprout",
+      "pool": "basic",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "mutate"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "name": "Prismatic Liver",
+      "pool": "basic",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "mutate"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "name": "Clustered Eggs",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 10,
+      "name": "Sloughed Cortex",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 11,
+      "name": "Sinew Garrote",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 12,
+      "name": "Vermicular Spinal Cord",
+      "pool": "advanced",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "add"
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "name": "Rawhide Restraint",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 14,
+      "name": "Black Goat Gut Suture",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 15,
+      "name": "Pig Iron Bone Saw",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 16,
+      "name": "Two-Inch Skull Nail",
+      "pool": "advanced",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "addOverflow"
+        ]
+      }
+    },
+    {
+      "id": 17,
+      "name": "Fouled Scraper",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 18,
+      "name": "Canine Teeth File",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 19,
+      "name": "Lady of the Plague Quarter",
+      "pool": "advanced",
+      "timing": {
+        "kind": "periodic",
+        "every": 2
+      }
+    },
+    {
+      "id": 20,
+      "name": "Aberrant Stinger",
+      "pool": "advanced",
+      "timing": {
+        "kind": "periodic",
+        "every": 3
+      }
+    },
+    {
+      "id": 21,
+      "name": "Tanned Leather Restraint",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 22,
+      "name": "Eyelid Speculum",
+      "pool": "advanced",
+      "timing": {
+        "kind": "reactive",
+        "on": [
+          "remove"
+        ]
+      }
+    },
+    {
+      "id": 23,
+      "name": "Beak of the Twice-Born",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 24,
+      "name": "Nettle Toggle",
+      "pool": "advanced",
+      "timing": {
+        "kind": "end"
+      }
+    },
+    {
+      "id": 25,
+      "name": "Egg-Burdened Butterfly",
+      "pool": "advanced",
+      "timing": {
+        "kind": "periodic",
+        "every": 3
+      }
+    }
+  ],
+  "potionOffer": {
+    "Probiotic Enzyme Solution": 1.3997486597499431,
+    "Slough Solution": 0.878,
+    "Leptomeningeal Solution": 0.878,
+    "Osteolytic Ointment": 0.878,
+    "Cleansing Ointment": 0.878,
+    "Fresh Spinal Powder": 0.878,
+    "Petrified Spinal Solution": 0.9227298472841119,
+    "Viviparous Hormone": 1,
+    "Eggshell Powder": 1,
+    "Brain Fog Tincture": 1,
+    "Osteogenic Powder": 2,
+    "Gray Matter Spinal Solution": 1,
+    "Hollow Spinal Solution": 1.7279325425949048,
+    "Green Bile Solution": 1.5775778294509257,
+    "Compound Leech Solution": 1,
+    "Digestive Enzyme Solution": 1,
+    "Vivigenic Powder": 1.6415359154651594,
+    "Potent Xenopurge Powder": 1.4602390253660733,
+    "Xenopurge Powder": 1,
+    "Pure Leech Solution": 0.9270249224306107,
+    "Bewitching Tincture": 1,
+    "Mutagenic Powder": 1,
+    "Viscous Bile Solution": 1,
+    "Slender-Limb Powder - Pest": 1.538,
+    "Twin Hormone - Pest": 1.538,
+    "Spinal Solution - Agito": 1.538,
+    "Anesthetic Tincture - Agito": 1.538,
+    "Slender-Limb Powder - Bone Sentry": 2.19035853804911,
+    "Twin Hormone - Bone Sentry": 1.538,
+    "Anesthetic Tincture - Aemberon": 1.538,
+    "Spinal Solution - Aemberon": 1.538,
+    "Xeno-Hormone": 2.2003557896774977,
+    "Targeted Xeno-Hormone": 1.2171980204102548,
+    "Potion Kit (Large)": 0.4681530847731749,
+    "Potion Kit (Small)": 0.439,
+    "Rare Potion Kit (Small)": 0.8986086309945066
+  },
+  "boxOffer": {
+    "Probiotic Enzyme Solution": 1,
+    "Slough Solution": 1,
+    "Leptomeningeal Solution": 1,
+    "Osteolytic Ointment": 1,
+    "Cleansing Ointment": 1,
+    "Fresh Spinal Powder": 1,
+    "Petrified Spinal Solution": 1,
+    "Viviparous Hormone": 1,
+    "Eggshell Powder": 1,
+    "Brain Fog Tincture": 1,
+    "Osteogenic Powder": 1,
+    "Gray Matter Spinal Solution": 1,
+    "Hollow Spinal Solution": 1,
+    "Green Bile Solution": 1,
+    "Compound Leech Solution": 1,
+    "Digestive Enzyme Solution": 1,
+    "Vivigenic Powder": 1,
+    "Potent Xenopurge Powder": 1,
+    "Xenopurge Powder": 1,
+    "Pure Leech Solution": 1,
+    "Bewitching Tincture": 1,
+    "Mutagenic Powder": 1,
+    "Viscous Bile Solution": 1,
+    "Slender-Limb Powder - Pest": 1,
+    "Twin Hormone - Pest": 1,
+    "Spinal Solution - Agito": 1,
+    "Anesthetic Tincture - Agito": 1,
+    "Slender-Limb Powder - Bone Sentry": 1,
+    "Twin Hormone - Bone Sentry": 1,
+    "Anesthetic Tincture - Aemberon": 1,
+    "Spinal Solution - Aemberon": 1,
+    "Xeno-Hormone": 1,
+    "Targeted Xeno-Hormone": 1
+  },
+  "instrumentOffer": {
+    "basic": {
+      "Chrysalis Specimen": 0.09463625480335085,
+      "Incubation Sac": 0.07135444268772012,
+      "Hyperplastic Frontal Lobe": 0.06122254297073267,
+      "Hypertrophic Pituitary": 0.11533119890613373,
+      "Adherent Metatarsals": 0.07178558735652808,
+      "Contracted Claws": 0.10670830552997418,
+      "Aberrant Sprout": 0.11339104789649783,
+      "Prismatic Liver": 0.06467170032119647
+    },
+    "advanced": {
+      "Clustered Eggs": 1,
+      "Sloughed Cortex": 1.131050605060506,
+      "Sinew Garrote": 1,
+      "Vermicular Spinal Cord": 1,
+      "Rawhide Restraint": 1,
+      "Black Goat Gut Suture": 1,
+      "Pig Iron Bone Saw": 1,
+      "Two-Inch Skull Nail": 1,
+      "Fouled Scraper": 1,
+      "Canine Teeth File": 1,
+      "Lady of the Plague Quarter": 0.25,
+      "Aberrant Stinger": 0.25,
+      "Tanned Leather Restraint": 1,
+      "Eyelid Speculum": 0.25,
+      "Beak of the Twice-Born": 0.25,
+      "Nettle Toggle": 1,
+      "Egg-Burdened Butterfly": 0.125
+    }
+  },
+  "spawnRarity": {
+    "normal": 43.98493535769686,
+    "magic": 28.425974506855187,
+    "rare": 18.59911442235504,
+    "boss": 17.9549177416518
+  },
+  "strength": {
+    "Lady of the Plague Quarter": 727172.468,
+    "Beak of the Twice-Born": 673690.621,
+    "Canine Teeth File": 585682.995,
+    "Incubation Sac": 568664.772,
+    "Contracted Claws": 568237.991,
+    "Pig Iron Bone Saw": 535591.509,
+    "Rawhide Restraint": 509315.462,
+    "Black Goat Gut Suture": 485931.737,
+    "Aberrant Sprout": 475569.258,
+    "Fouled Scraper": 468386.575,
+    "Vermicular Spinal Cord": 465904.665,
+    "Nettle Toggle": 462634.683,
+    "Hypertrophic Pituitary": 461264.5,
+    "Sloughed Cortex": 460791.569,
+    "Tanned Leather Restraint": 459440.223,
+    "Eyelid Speculum": 456087.713,
+    "Sinew Garrote": 442435.487,
+    "Chrysalis Specimen": 431593.321,
+    "Prismatic Liver": 421914.176,
+    "Adherent Metatarsals": 417643.954,
+    "Hyperplastic Frontal Lobe": 415818.144,
+    "Clustered Eggs": 413928.554,
+    "Egg-Burdened Butterfly": 400015.409,
+    "Two-Inch Skull Nail": 379578.501,
+    "Aberrant Stinger": 377911.16
+  }
+}

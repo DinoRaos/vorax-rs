@@ -1,0 +1,21 @@
+# Build output
+/target/
+
+# Clone of tidewarden/tli-vorax-simulator, managed by scripts/sync.ps1
+/upstream/
+node_modules/
+
+# Local logs (sync.log is written by scripts/sync.ps1)
+sync.log
+*.log
+
+# Editors, OS and local tool settings
+.vscode/
+.idea/
+.claude/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+__pycache__/

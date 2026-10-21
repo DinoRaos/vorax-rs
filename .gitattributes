@@ -1,0 +1,4 @@
+# Check out text as LF everywhere, so data/ and fixtures/ stay byte-identical to what upstream's tools export
+* text=auto eol=lf
+*.png binary
+*.ico binary

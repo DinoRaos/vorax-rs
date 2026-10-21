@@ -1,0 +1,385 @@
+//! The game data exported from upstream (tools/export-data.ts): cards, instruments, the live odds, instrument
+//! strengths and the board-value model. Embedded at build time; `VORAX_DATA=<dir>` loads a newer export at run
+//! time instead, so a daily data update needs no rebuild.
+
+use crate::effects;
+use crate::types::{EventType, Rarity, Settings};
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::OnceLock;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Targeting {
+    Auto,
+    Select1,
+    Select1To2,
+    /// a Potion Kit: opens a hand of this many potions
+    Box(u8),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PotionRarity {
+    Normal,
+    Magic,
+    Rare,
+    Supreme,
+}
+
+#[derive(Clone, Debug)]
+pub struct PotionDef {
+    pub id: u8,
+    pub name: String,
+    pub rarity: PotionRarity,
+    pub targeting: Targeting,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Pool {
+    Basic,
+    Advanced,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Timing {
+    End,
+    /// bit per EventType
+    Reactive(u8),
+    Periodic(i32),
+}
+
+impl Timing {
+    pub fn reacts_to(self, e: EventType) -> bool {
+        matches!(self, Timing::Reactive(mask) if mask & (1 << e as u8) != 0)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct InstrumentDef {
+    pub id: u8,
+    pub name: String,
+    pub pool: Pool,
+    pub timing: Timing,
+}
+
+/// One decision tree: node 0 is the root; at a branch (f ≥ 0) go to l when x[f] < t, else to r; a leaf gives v.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Tree {
+    pub f: Vec<i32>,
+    pub t: Vec<f64>,
+    pub l: Vec<usize>,
+    pub r: Vec<usize>,
+    pub v: Vec<f64>,
+}
+
+/// Weights per round (one per feature), or decision trees added to `base`; the prediction is in millions.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ValueModel {
+    Rounds { rounds: Vec<Vec<f64>> },
+    Trees { base: f64, trees: Vec<Tree> },
+}
+
+pub struct Data {
+    /// the upstream commit the data was exported from
+    pub commit: Option<String>,
+    pub odds: String,
+    pub supreme_chance: f64,
+    pub default_settings: Settings,
+    pub potions: Vec<PotionDef>,
+    pub instruments: Vec<InstrumentDef>,
+    potion_at: [u16; 256],
+    instrument_at: [u16; 256],
+    /// deal pools, in upstream's order (ids)
+    pub normal_pool: Vec<u8>,
+    pub box_pool: Vec<u8>,
+    pub supreme_pool: Vec<u8>,
+    pub basic_pool: Vec<u8>,
+    pub advanced_pool: Vec<u8>,
+    /// offer weights by id (1 when the odds don't name the card)
+    pub potion_offer: [f64; 256],
+    pub box_offer: [f64; 256],
+    pub instrument_offer: [f64; 256],
+    pub spawn_rarity: [f64; 4],
+    /// instrument strength by id (0 when unknown), for picks inside playouts
+    pub prior: [f64; 256],
+    pub median_prior_basic: f64,
+    pub median_prior_advanced: f64,
+    pub is_basic: [bool; 256],
+    pub model: Option<ValueModel>,
+    /// position of each instrument in upstream's list (the board value's feature order)
+    pub instrument_index: [u16; 256],
+    pub periodic: Vec<u8>,
+}
+
+const NONE: u16 = u16::MAX;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawGame {
+    #[serde(default)]
+    commit: Option<String>,
+    odds: String,
+    supreme_chance: f64,
+    default_settings: RawSettings,
+    potions: Vec<RawPotion>,
+    instruments: Vec<RawInstrument>,
+    potion_offer: HashMap<String, f64>,
+    box_offer: HashMap<String, f64>,
+    instrument_offer: RawInstrumentOffer,
+    spawn_rarity: HashMap<String, f64>,
+    strength: HashMap<String, f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawSettings {
+    potion_refreshes: i32,
+    instrument_refreshes: i32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawPotion {
+    id: u8,
+    name: String,
+    rarity: PotionRarity,
+    targeting: serde_json::Value,
+    has_effect: bool,
+}
+
+#[derive(Deserialize)]
+struct RawInstrument {
+    id: u8,
+    name: String,
+    pool: Pool,
+    timing: RawTiming,
+}
+
+#[derive(Deserialize)]
+struct RawTiming {
+    kind: String,
+    #[serde(default)]
+    on: Vec<String>,
+    #[serde(default)]
+    every: i32,
+}
+
+#[derive(Deserialize)]
+struct RawInstrumentOffer {
+    basic: HashMap<String, f64>,
+    advanced: HashMap<String, f64>,
+}
+
+/// The game data this build was compiled with, as exported (game.json).
+pub const EMBEDDED_GAME: &str = include_str!("../../../data/game.json");
+const EMBEDDED_VALUE: &str = include_str!("../../../data/boardValue.json");
+
+impl Data {
+    /// The data this build was compiled with.
+    pub fn embedded() -> Result<Data, String> {
+        Data::parse(EMBEDDED_GAME, Some(EMBEDDED_VALUE))
+    }
+
+    /// A data directory written by tools/export-data.ts (game.json, boardValue.json).
+    pub fn load_dir(dir: &Path) -> Result<Data, String> {
+        let game = std::fs::read_to_string(dir.join("game.json")).map_err(|e| format!("{}: {e}", dir.join("game.json").display()))?;
+        let value = std::fs::read_to_string(dir.join("boardValue.json")).ok();
+        Data::parse(&game, value.as_deref())
+    }
+
+    pub fn parse(game: &str, board_value: Option<&str>) -> Result<Data, String> {
+        let raw: RawGame = serde_json::from_str(game).map_err(|e| format!("game.json: {e}"))?;
+        let model = match board_value.map(str::trim) {
+            None | Some("") | Some("null") => None,
+            Some(s) => Some(serde_json::from_str::<ValueModel>(s).map_err(|e| format!("boardValue.json: {e}"))?),
+        };
+
+        let mut problems = Vec::new();
+        let mut potions = Vec::new();
+        for p in &raw.potions {
+            let targeting = match &p.targeting {
+                serde_json::Value::String(s) if s == "auto" => Targeting::Auto,
+                serde_json::Value::String(s) if s == "select1" => Targeting::Select1,
+                serde_json::Value::String(s) if s == "select1to2" => Targeting::Select1To2,
+                serde_json::Value::Object(o) if o.contains_key("box") => Targeting::Box(o["box"].as_u64().unwrap_or(0) as u8),
+                other => {
+                    problems.push(format!("potion {} ({}): unknown targeting {other}", p.id, p.name));
+                    Targeting::Auto
+                }
+            };
+            let is_box = matches!(targeting, Targeting::Box(_));
+            match effects::potion_port(p.id) {
+                Some((name, t)) if name == p.name && t == targeting => {}
+                Some((name, t)) => problems.push(format!("potion {}: upstream has \"{}\" ({targeting:?}), the port has \"{name}\" ({t:?})", p.id, p.name)),
+                None if is_box && !p.has_effect => {}
+                None => problems.push(format!("potion {} \"{}\" is new upstream: port its effect in crates/vorax/src/effects.rs", p.id, p.name)),
+            }
+            potions.push(PotionDef { id: p.id, name: p.name.clone(), rarity: p.rarity, targeting });
+        }
+
+        let mut instruments = Vec::new();
+        for d in &raw.instruments {
+            let timing = match d.timing.kind.as_str() {
+                "end" => Timing::End,
+                "periodic" => Timing::Periodic(d.timing.every),
+                "reactive" => {
+                    let mut mask = 0u8;
+                    for e in &d.timing.on {
+                        match EventType::parse(e) {
+                            Some(t) => mask |= 1 << t as u8,
+                            None => problems.push(format!("instrument {} ({}): unknown event {e}", d.id, d.name)),
+                        }
+                    }
+                    Timing::Reactive(mask)
+                }
+                k => {
+                    problems.push(format!("instrument {} ({}): unknown timing {k}", d.id, d.name));
+                    Timing::End
+                }
+            };
+            match effects::instrument_port(d.id) {
+                Some(name) if name == d.name => {}
+                Some(name) => problems.push(format!("instrument {}: upstream has \"{}\", the port has \"{name}\"", d.id, d.name)),
+                None => problems.push(format!("instrument {} \"{}\" is new upstream: port it in crates/vorax/src/effects.rs", d.id, d.name)),
+            }
+            instruments.push(InstrumentDef { id: d.id, name: d.name.clone(), pool: d.pool, timing });
+        }
+        if !problems.is_empty() {
+            return Err(format!("the Rust port is behind upstream's rules:\n  {}", problems.join("\n  ")));
+        }
+
+        let mut potion_at = [NONE; 256];
+        for (i, p) in potions.iter().enumerate() {
+            potion_at[p.id as usize] = i as u16;
+        }
+        let mut instrument_at = [NONE; 256];
+        for (i, d) in instruments.iter().enumerate() {
+            instrument_at[d.id as usize] = i as u16;
+        }
+
+        let normal_pool: Vec<u8> = potions.iter().filter(|p| p.rarity != PotionRarity::Supreme).map(|p| p.id).collect();
+        let box_pool: Vec<u8> = normal_pool.iter().copied().filter(|&id| !matches!(potions[potion_at[id as usize] as usize].targeting, Targeting::Box(_))).collect();
+        let supreme_pool: Vec<u8> = potions.iter().filter(|p| p.rarity == PotionRarity::Supreme).map(|p| p.id).collect();
+        let basic_pool: Vec<u8> = instruments.iter().filter(|d| d.pool == Pool::Basic).map(|d| d.id).collect();
+        let advanced_pool: Vec<u8> = instruments.iter().filter(|d| d.pool == Pool::Advanced).map(|d| d.id).collect();
+
+        let mut potion_offer = [1.0; 256];
+        let mut box_offer = [1.0; 256];
+        for p in &potions {
+            if let Some(&w) = raw.potion_offer.get(&p.name) {
+                potion_offer[p.id as usize] = w;
+            }
+            if let Some(&w) = raw.box_offer.get(&p.name) {
+                box_offer[p.id as usize] = w;
+            }
+        }
+        let mut instrument_offer = [1.0; 256];
+        let mut prior = [0.0; 256];
+        let mut is_basic = [false; 256];
+        for d in &instruments {
+            let pool = if d.pool == Pool::Basic { &raw.instrument_offer.basic } else { &raw.instrument_offer.advanced };
+            if let Some(&w) = pool.get(&d.name) {
+                instrument_offer[d.id as usize] = w;
+            }
+            prior[d.id as usize] = raw.strength.get(&d.name).copied().unwrap_or(0.0);
+            is_basic[d.id as usize] = d.pool == Pool::Basic;
+        }
+        let median = |pool: Pool| {
+            let mut xs: Vec<f64> = instruments.iter().filter(|d| (d.pool == Pool::Basic) == (pool == Pool::Basic)).map(|d| prior[d.id as usize]).collect();
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            xs.get(xs.len() >> 1).copied().unwrap_or(0.0)
+        };
+        let spawn = |r: &str| raw.spawn_rarity.get(r).copied().unwrap_or(0.0);
+        let periodic = instruments.iter().filter(|d| matches!(d.timing, Timing::Periodic(_))).map(|d| d.id).collect();
+
+        Ok(Data {
+            commit: raw.commit,
+            odds: raw.odds,
+            supreme_chance: raw.supreme_chance,
+            default_settings: Settings { potion_refreshes: raw.default_settings.potion_refreshes, instrument_refreshes: raw.default_settings.instrument_refreshes },
+            median_prior_basic: median(Pool::Basic),
+            median_prior_advanced: median(Pool::Advanced),
+            potions,
+            instruments,
+            potion_at,
+            instrument_index: instrument_at,
+            instrument_at,
+            normal_pool,
+            box_pool,
+            supreme_pool,
+            basic_pool,
+            advanced_pool,
+            potion_offer,
+            box_offer,
+            instrument_offer,
+            spawn_rarity: [spawn("normal"), spawn("magic"), spawn("rare"), spawn("boss")],
+            prior,
+            is_basic,
+            model,
+            periodic,
+        })
+    }
+
+    #[inline]
+    pub fn potion(&self, id: u8) -> &PotionDef {
+        let at = self.potion_at[id as usize];
+        assert!(at != NONE, "Unknown potion id {id}");
+        &self.potions[at as usize]
+    }
+
+    #[inline]
+    pub fn has_potion(&self, id: u8) -> bool {
+        self.potion_at[id as usize] != NONE
+    }
+
+    #[inline]
+    pub fn instrument(&self, id: u8) -> Option<&InstrumentDef> {
+        let at = self.instrument_at[id as usize];
+        (at != NONE).then(|| &self.instruments[at as usize])
+    }
+
+    pub fn potion_by_name(&self, name: &str) -> Option<u8> {
+        let n = norm(name);
+        self.potions.iter().find(|p| norm(&p.name) == n).map(|p| p.id)
+    }
+
+    pub fn instrument_by_name(&self, name: &str) -> Option<u8> {
+        let n = norm(name);
+        self.instruments.iter().find(|d| norm(&d.name) == n).map(|d| d.id)
+    }
+
+    #[inline]
+    pub fn roll_weights_total(&self) -> f64 {
+        self.spawn_rarity.iter().fold(0.0, |s, w| s + w)
+    }
+
+    pub fn spawn_weight(&self, r: Rarity) -> f64 {
+        self.spawn_rarity[r.index()]
+    }
+}
+
+/// Lower case, letters only: how the advisor matches names read off the screen.
+pub fn norm(s: &str) -> String {
+    s.chars().filter(|c| c.is_ascii_alphabetic()).map(|c| c.to_ascii_lowercase()).collect()
+}
+
+static DATA: OnceLock<Data> = OnceLock::new();
+
+/// The game data: what `init` set, else `VORAX_DATA=<dir>` when set, else the embedded export.
+pub fn data() -> &'static Data {
+    DATA.get_or_init(|| {
+        let loaded = match std::env::var_os("VORAX_DATA") {
+            Some(dir) => Data::load_dir(Path::new(&dir)),
+            None => Data::embedded(),
+        };
+        loaded.unwrap_or_else(|e| panic!("{e}"))
+    })
+}
+
+/// Use this data instead of the default; only before the first `data()` call.
+pub fn init(d: Data) -> Result<(), String> {
+    DATA.set(d).map_err(|_| "game data already loaded".to_string())
+}
