@@ -298,7 +298,7 @@ impl Picker {
     }
 }
 
-/// The score the advice aims for: 900,000 on the board, which the endgame battle bonus takes to rainbow.
+/// The score the advice aims for: 840,000 on the board, which the endgame battle bonus takes to rainbow.
 pub fn goal_score(ua: i64) -> f64 {
     ua.min(TARGET) as f64
 }

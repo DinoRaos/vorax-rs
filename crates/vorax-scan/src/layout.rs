@@ -13,9 +13,35 @@ struct TankScene {
     aq: [f64; 2],
     icon: f64,
     icon_size: f64,
+    /// Not in upstream, for the overlay's marks: each tank's glass, its centre (nearer the middle of the screen
+    /// than its label), top and bottom, and half its width. Measured on 16:9 frames; no 21:9 frame shows the
+    /// tanks, so there it's 16:9's scaled by the tanks' wider spacing (×1.25) up from the labels.
+    glass_x: [f64; 6],
+    glass_y: [f64; 2],
+    glass_half_w: f64,
 }
-const ULTRAWIDE: TankScene = TankScene { x: [-858.0, -421.0, 16.0, 454.0, 913.0, 1386.0], name: [556.0, 577.0], total: [578.0, 600.0], aq: [599.0, 619.0], icon: 533.0, icon_size: 26.0 };
-const WIDE_16_9: TankScene = TankScene { x: [-756.0, -400.0, -48.0, 304.0, 667.0, 1037.0], name: [511.0, 531.0], total: [532.0, 552.0], aq: [554.0, 574.0], icon: 496.0, icon_size: 22.0 };
+const ULTRAWIDE: TankScene = TankScene {
+    x: [-858.0, -421.0, 16.0, 454.0, 913.0, 1386.0],
+    name: [556.0, 577.0],
+    total: [578.0, 600.0],
+    aq: [599.0, 619.0],
+    icon: 533.0,
+    icon_size: 26.0,
+    glass_x: [-817.0, -393.0, 31.0, 455.0, 900.0, 1358.0],
+    glass_y: [148.0, 486.0],
+    glass_half_w: 144.0,
+};
+const WIDE_16_9: TankScene = TankScene {
+    x: [-756.0, -400.0, -48.0, 304.0, 667.0, 1037.0],
+    name: [511.0, 531.0],
+    total: [532.0, 552.0],
+    aq: [554.0, 574.0],
+    icon: 496.0,
+    icon_size: 22.0,
+    glass_x: [-721.0, -376.0, -35.0, 307.0, 659.0, 1017.0],
+    glass_y: [185.0, 455.0],
+    glass_half_w: 115.0,
+};
 const LABEL_HALF_W: f64 = 200.0;
 
 fn mix(a: f64, b: f64, t: f64) -> f64 {
@@ -32,6 +58,9 @@ fn scene(aspect: f64) -> TankScene {
         aq: pair(WIDE_16_9.aq, ULTRAWIDE.aq),
         icon: mix(WIDE_16_9.icon, ULTRAWIDE.icon, t),
         icon_size: mix(WIDE_16_9.icon_size, ULTRAWIDE.icon_size, t),
+        glass_x: std::array::from_fn(|i| mix(WIDE_16_9.glass_x[i], ULTRAWIDE.glass_x[i], t)),
+        glass_y: pair(WIDE_16_9.glass_y, ULTRAWIDE.glass_y),
+        glass_half_w: mix(WIDE_16_9.glass_half_w, ULTRAWIDE.glass_half_w, t),
     }
 }
 
@@ -81,6 +110,9 @@ pub struct Layout {
     pub name_band: [Rect; 6],
     pub total_band: [Rect; 6],
     pub aq_band: [Rect; 6],
+    /// each tank's glass (not in upstream: the overlay outlines the tanks to target). In the 3D scene, so the
+    /// interface scale doesn't move it.
+    pub tank_glass: [Rect; 6],
     pub card_art: [Rect; 3],
     pub card_face: [Rect; 3],
     pub cards: [CardPos; 3],
@@ -153,6 +185,7 @@ pub fn layout_at(width: usize, height: usize, ui: f64) -> Layout {
         name_band: std::array::from_fn(|i| band(tank_cx[i], sc.name)),
         total_band: std::array::from_fn(|i| band(tank_cx[i], sc.total)),
         aq_band: std::array::from_fn(|i| band(tank_cx[i], sc.aq)),
+        tank_glass: std::array::from_fn(|i| Rect::new(cx + (sc.glass_x[i] - sc.glass_half_w) * s, sc.glass_y[0] * s, 2.0 * sc.glass_half_w * s, (sc.glass_y[1] - sc.glass_y[0]) * s)),
         card_art: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_ART.1 / 2.0) * k, bottom(CARD_ART.0), CARD_ART.1 * k, CARD_ART.2 * k)),
         card_face: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_FACE.1 / 2.0) * k, bottom(CARD_FACE.0), CARD_FACE.1 * k, CARD_FACE.2 * k)),
         cards: std::array::from_fn(|j| CardPos { cx: card_cx[j] + CARD_SHIFT[j].0 * k, cy: bottom(CARD_CY + CARD_SHIFT[j].1), angle: CARD_TILT[j] }),

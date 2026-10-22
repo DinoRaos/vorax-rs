@@ -106,7 +106,7 @@ pub struct Advice {
 
 /// Potion look-ahead: each card on offer, the next best options up to 4, and a reroll, each played to the end 64 times.
 pub const LOOK_AHEAD: LookAhead = LookAhead { top: 4, playouts: 64, steer: Some(0.3), inner_samples: None, value: Some(true), halving: None };
-/// Futures per instrument choice, each judged by its final score counted up to 900k.
+/// Futures per instrument choice, each judged by its final score counted up to 840k.
 pub const INSTRUMENT_FUTURES: u32 = 64;
 /// How the rounds inside an instrument choice's futures are played: by the smarter player (the board value).
 const INSTRUMENT_ROLLOUT: Policy = Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) };

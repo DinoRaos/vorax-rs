@@ -7,12 +7,12 @@ use crate::game::ultimate_activity;
 use crate::types::*;
 
 /// The advice's target (bot.ts TARGET): the board value is counted up to it.
-pub const TARGET: i64 = 900_000;
+pub const TARGET: i64 = 840_000;
 /// Where the features cap the score: 950,000, the target the shipped model was trained with, kept so it reads
 /// boards as it learned them.
 const FEATURE_CAP: i64 = 950_000;
 
-/// Predicted final score counted up to 900,000; once the game is over, the score itself (up to 900,000).
+/// Predicted final score counted up to 840,000; once the game is over, the score itself (up to 840,000).
 pub fn board_value(s: &GameState) -> f64 {
     let d = data();
     let Some(model) = &d.model else { return ultimate_activity(s) as f64 };

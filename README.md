@@ -5,9 +5,9 @@
 
 A small Windows overlay for **Surgical Preparation**, the Vorax minigame of Torchlight: Infinite (SS11). It
 follows your game, reads the board when it changes and marks the move the Solver advises: the card (or the
-reroll) to take, the tanks to target, and how often that line reaches 900k.
+reroll) to take, the tanks to target, and how often that line reaches 840k.
 
-![The overlay during a Vorax round: a cyan outline on the Xeno-Hormone card, a diamond above tank 1, and the pill "Xeno-Hormone → tank 1 · 38% reach 950k" at the top](docs/overlay.jpg)
+![The overlay during a Vorax round: a cyan outline on the Anesthetic Tincture - Agito card, tank 2's glass glowing cyan, and the pill "Anesthetic Tincture - Agito → tank 2 · 33% reach 840k" at the top](docs/overlay.jpg)
 
 Under the overlay is a Rust port of [tidewarden/tli-vorax-simulator](https://github.com/tidewarden/tli-vorax-simulator)'s
 game engine, bots, Solver and screen reader. It plays exactly like the TypeScript original, checked step by step
@@ -20,8 +20,8 @@ keys, and it doesn't inject into or change the game: you make every move. This i
 ## What it shows
 
 - an outline on the card to take, or on the reroll button (cyan by default; five colours in the tray menu);
-- a diamond above each tank to target;
-- one small pill at the top with the move and how often it reaches 900k.
+- a glowing outline on the glass of each tank to target;
+- one small pill at the top with the move and how often it reaches 840k.
 
 Nothing else is drawn, and nothing is drawn outside the Surgical Preparation screen. The marks only show while the
 game is in front.

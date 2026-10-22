@@ -646,8 +646,10 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
         b.h *= sy;
     }
     for t in p.tanks.iter_mut() {
-        t.0 *= sx;
-        t.1 *= sy;
+        t.x *= sx;
+        t.y *= sy;
+        t.w *= sx;
+        t.h *= sy;
     }
     let pm = render(&p, w as u32, h as u32, &s.fonts, crate::draw::accent(s.settings.accent));
     unsafe { put(s.hwnd, x, y, w, h, pm.data()) };

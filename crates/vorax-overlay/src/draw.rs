@@ -1,5 +1,5 @@
-//! What the overlay draws, and drawing it: a gold outline on the card (or reroll) to take, a marker above each
-//! tank to target, and one small pill with the move and how often it reaches 900k. Pure drawing into an RGBA
+//! What the overlay draws, and drawing it: an outline on the card (or reroll) to take, a glowing outline on the
+//! glass of each tank to target, and one small pill with the move and how often it reaches 840k. Pure drawing into an RGBA
 //! picture, so it can be previewed on a saved frame without the game.
 
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
@@ -16,7 +16,7 @@ const CARD_H: f64 = 340.0;
 pub struct Pill {
     /// the move: a card's name, with its tanks
     pub main: String,
-    /// how it ends: "64% reach 900k"
+    /// how it ends: "64% reach 840k"
     pub sub: String,
     /// the board is being read or worked out: the last advice, dimmed
     pub dim: bool,
@@ -29,8 +29,8 @@ pub struct Plan {
     pub card: Option<(CardPos, f64, f64)>,
     /// the reroll button
     pub button: Option<Rect>,
-    /// a marker above each tank to target: its centre
-    pub tanks: Vec<(f64, f64)>,
+    /// the glass of each tank to target
+    pub tanks: Vec<Rect>,
 }
 
 impl Plan {
@@ -84,13 +84,7 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
                     plan.card = Some((*c, CARD_W * l.k, CARD_H * l.k));
                 }
             }
-            for &t in &r.targets {
-                let t = t as usize;
-                if t < 6 {
-                    let icon = l.icon[t];
-                    plan.tanks.push((l.tank_cx[t], icon.y - icon.h * 0.9));
-                }
-            }
+            plan.tanks.extend(r.targets.iter().filter(|&&t| t < 6).map(|&t| l.tank_glass[t as usize]));
             let main = match r.targets.as_slice() {
                 [] => name,
                 [a] => format!("{name}  →  tank {}", a + 1),
@@ -178,12 +172,6 @@ fn glow(pm: &mut Pixmap, path: &tiny_skia::Path, t: Transform, s: f32, (r, g, b)
     pm.stroke_path(path, &paint(rgba(r, g, b, 1.0)), &Stroke { width: 4.0 * s, ..Default::default() }, t, None);
 }
 
-/// A filled mark with a dark edge: reads on the bright tanks and on the dark glass alike.
-fn solid(pm: &mut Pixmap, path: &tiny_skia::Path, t: Transform, s: f32, (r, g, b): (u8, u8, u8)) {
-    pm.stroke_path(path, &paint(rgba(r, g, b, 0.22)), &Stroke { width: 14.0 * s, ..Default::default() }, t, None);
-    pm.stroke_path(path, &paint(rgba(8, 6, 8, 0.9)), &Stroke { width: 5.0 * s, ..Default::default() }, t, None);
-    pm.fill_path(path, &paint(rgba(r, g, b, 1.0)), FillRule::Winding, t, None);
-}
 
 fn diamond_path(x: f32, y: f32, r: f32) -> Option<tiny_skia::Path> {
     let mut pb = PathBuilder::new();
@@ -264,9 +252,13 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
             glow(&mut pm, &p, Transform::identity(), s, accent);
         }
     }
-    for &(x, y) in &plan.tanks {
-        if let Some(p) = diamond_path(x as f32, y as f32, 16.0 * s) {
-            solid(&mut pm, &p, Transform::identity(), s, accent);
+    // a tank to target: its glass tinted in the accent and outlined like the card, so it reads at a glance
+    for g in &plan.tanks {
+        let pad = 6.0 * s;
+        if let Some(p) = rounded(g.x as f32 - pad, g.y as f32 - pad, g.w as f32 + 2.0 * pad, g.h as f32 + 2.0 * pad, 18.0 * s) {
+            let (r, gg, b) = accent;
+            pm.fill_path(&p, &paint(rgba(r, gg, b, 0.16)), FillRule::Winding, Transform::identity(), None);
+            glow(&mut pm, &p, Transform::identity(), s, accent);
         }
     }
 
@@ -274,7 +266,7 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
         let (big, small) = (23.0 * s, 18.0 * s);
         let gap = 16.0 * s;
         let mark = 12.0 * s;
-        // "33% reach 900k": the share in the accent, the rest in light grey
+        // "33% reach 840k": the share in the accent, the rest in light grey
         let (odds, rest) = match pill.sub.split_once(' ') {
             Some((a, b)) if a.ends_with('%') => (a.to_string(), format!(" {b}")),
             _ => (String::new(), pill.sub.clone()),
