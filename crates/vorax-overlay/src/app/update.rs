@@ -1,7 +1,7 @@
-//! Keeping the data current without a rebuild. Upstream commits new odds hourly, a smarter board value nightly,
-//! instrument strengths and the icons players named: all data, fetched here from upstream's newest commit,
-//! checked as the build checks its own (every card and instrument must be one this build has ported), and kept
-//! in %APPDATA%\VoraxRs\data, which the overlay loads at start.
+//! Keeping the data current without a rebuild. Upstream commits new odds hourly, a smarter board value nightly
+//! and the icons players named: all data, fetched here from upstream's newest commit, checked as the build
+//! checks its own (every card and instrument must be one this build has ported), and kept in
+//! %APPDATA%\VoraxRs\data, which the overlay loads at start.
 //!
 //! Rules are code, and can't be fetched: when upstream changes a card's effect, the reader or the advisor, the
 //! port needs updating (scripts/sync.ps1 shows what). The updater only notices it and says so.
@@ -145,15 +145,35 @@ pub enum Checked {
     Fetched(Meta),
 }
 
+/// Why a check came to nothing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Failed {
+    /// GitHub didn't answer, or not in time
+    Offline,
+    /// GitHub answered, but upstream's newest data doesn't load in this build (a file it reads is gone, a card it
+    /// hasn't ported): only a sync and rebuild takes it
+    Changed,
+}
+
+/// HTTP 404 as Windows reports it: a file upstream no longer has.
+const NOT_FOUND: i32 = 0x80190194u32 as i32;
+
 /// Fetches upstream's newest data when there's a newer commit than the data in use.
-pub fn check() -> Result<Checked, String> {
-    let client = HttpClient::new().map_err(|e| e.to_string())?;
+pub fn check() -> Result<Checked, (Failed, String)> {
+    let offline = |e: String| (Failed::Offline, e);
+    let client = HttpClient::new().map_err(|e| offline(e.to_string()))?;
     if let Ok(h) = client.DefaultRequestHeaders() {
         let _ = h.UserAgent().and_then(|ua| ua.TryParseAdd(&HSTRING::from("vorax-rs-overlay")));
     }
-    let head: Value = serde_json::from_str(&get(&client, &format!("https://api.github.com/repos/{REPO}/commits/main")).map_err(|e| format!("GitHub: {e}"))?).map_err(|e| e.to_string())?;
-    let sha = head["sha"].as_str().ok_or("GitHub: no commit")?.to_string();
-    let embedded: Value = serde_json::from_str(vorax::data::EMBEDDED_GAME).map_err(|e| e.to_string())?;
+    let head: Value = serde_json::from_str(&get(&client, &format!("https://api.github.com/repos/{REPO}/commits/main")).map_err(|e| offline(format!("GitHub: {e}")))?).map_err(|e| offline(e.to_string()))?;
+    let sha = head["sha"].as_str().ok_or_else(|| offline("GitHub: no commit".into()))?.to_string();
+    fetch(&client, sha)
+}
+
+/// Upstream's data at commit `sha`, unless it's the data in use already.
+fn fetch(client: &HttpClient, sha: String) -> Result<Checked, (Failed, String)> {
+    let changed = |e: String| (Failed::Changed, e);
+    let embedded: Value = serde_json::from_str(vorax::data::EMBEDDED_GAME).map_err(|e| changed(e.to_string()))?;
     // VORAX_BUILT_COMMIT: test the fetch as if this build were from another commit
     let built = std::env::var("VORAX_BUILT_COMMIT").unwrap_or_else(|_| embedded["commit"].as_str().unwrap_or_default().to_string());
     if let Some(m) = Meta::load().filter(|m| m.commit == sha && m.built == built) {
@@ -162,29 +182,29 @@ pub fn check() -> Result<Checked, String> {
     if sha == built {
         return Ok(Checked::Current(Meta { commit: sha, odds: embedded["odds"].as_str().unwrap_or_default().into(), rules_changed: vec![], built }));
     }
-    let raw = |path: &str| get(&client, &format!("https://raw.githubusercontent.com/{REPO}/{sha}/{path}")).map_err(|e| format!("{path}: {e}"));
+    let raw = |path: &str| {
+        get(client, &format!("https://raw.githubusercontent.com/{REPO}/{sha}/{path}")).map_err(|e| (if e.code().0 == NOT_FOUND { Failed::Changed } else { Failed::Offline }, format!("{path}: {e}")))
+    };
 
-    // the odds and strengths into this build's game.json (its cards and instruments are the ones it has ported)
-    let weights: Value = serde_json::from_str(&ts_object_to_json(&raw("src/data/liveWeights.ts")?)?).map_err(|e| format!("liveWeights.ts: {e}"))?;
-    let strength: Value = serde_json::from_str(&raw("src/data/instrumentStrength.json")?).map_err(|e| format!("instrumentStrength.json: {e}"))?;
+    // the odds into this build's game.json (its cards and instruments are the ones it has ported)
+    let weights: Value = serde_json::from_str(&ts_object_to_json(&raw("src/data/liveWeights.ts")?).map_err(changed)?).map_err(|e| changed(format!("liveWeights.ts: {e}")))?;
     let mut game = embedded.clone();
     game["odds"] = weights["updated"].clone();
     for k in ["supremeChance", "potionOffer", "boxOffer", "instrumentOffer", "spawnRarity"] {
         if weights[k].is_null() {
-            return Err(format!("liveWeights.ts: no {k}"));
+            return Err(changed(format!("liveWeights.ts: no {k}")));
         }
         game[k] = weights[k].clone();
     }
-    game["strength"] = strength["strength"].clone();
     let game = serde_json::to_string_pretty(&game).unwrap();
     let board = raw("src/data/boardValue.json")?;
     let scan = [raw("src/solver/scan/data.json")?, raw("src/solver/scan/learnedIcons.json")?, raw("src/solver/scan/levels.json")?];
     let names = include_str!("../../../../data/scan/names.json");
 
     // as strict as the build: refused when it doesn't load
-    vorax::Data::parse(&game, Some(&board))?;
-    vorax_scan::ScanData::parse(&scan[0], &scan[1], &scan[2], names)?;
-    let rules = rules_changed(&client, &built, &sha).unwrap_or_else(|e| {
+    vorax::Data::parse(&game, Some(&board)).map_err(changed)?;
+    vorax_scan::ScanData::parse(&scan[0], &scan[1], &scan[2], names).map_err(changed)?;
+    let rules = rules_changed(client, &built, &sha).unwrap_or_else(|e| {
         note(&format!("couldn't compare upstream's rules: {e}"));
         vec![]
     });
@@ -192,8 +212,10 @@ pub fn check() -> Result<Checked, String> {
     let dir = updated_dir();
     let tmp = data_dir().join("data.new");
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("scan")).map_err(|e| e.to_string())?;
-    let write = |p: PathBuf, s: &str| std::fs::write(&p, s).map_err(|e| format!("{}: {e}", p.display()));
+    // a disk that won't take the files: nothing a sync would change, so reported as no answer
+    let disk = |e: String| (Failed::Offline, e);
+    std::fs::create_dir_all(tmp.join("scan")).map_err(|e| disk(e.to_string()))?;
+    let write = |p: PathBuf, s: &str| std::fs::write(&p, s).map_err(|e| disk(format!("{}: {e}", p.display())));
     write(tmp.join("game.json"), &game)?;
     write(tmp.join("boardValue.json"), &board)?;
     for (f, s) in ["data.json", "learnedIcons.json", "levels.json"].iter().zip(&scan) {
@@ -203,12 +225,12 @@ pub fn check() -> Result<Checked, String> {
     let meta = Meta { commit: sha, odds: weights["updated"].as_str().unwrap_or_default().into(), rules_changed: rules, built };
     write(tmp.join("meta.json"), &serde_json::to_string_pretty(&meta).unwrap())?;
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::rename(&tmp, &dir).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &dir).map_err(|e| disk(e.to_string()))?;
     Ok(Checked::Fetched(meta))
 }
 
 /// `check` on its own thread, given up on after `wait` (a slow network never holds the overlay up).
-pub fn check_within(wait: Duration) -> Result<Checked, String> {
+pub fn check_within(wait: Duration) -> Result<Checked, (Failed, String)> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         unsafe {
@@ -216,7 +238,7 @@ pub fn check_within(wait: Duration) -> Result<Checked, String> {
         }
         let _ = tx.send(check());
     });
-    rx.recv_timeout(wait).map_err(|_| "no answer from GitHub in time".to_string())?
+    rx.recv_timeout(wait).map_err(|_| (Failed::Offline, "no answer from GitHub in time".to_string()))?
 }
 
 /// The fetched data, when there is some for this build: loaded in place of the build's own.
@@ -236,22 +258,27 @@ pub fn use_fetched() -> Option<Meta> {
 }
 
 /// What a check means for the tray menu (and the log).
-pub fn status(r: Result<Checked, String>) -> super::window::ToUi {
+pub fn status(r: Result<Checked, (Failed, String)>) -> super::window::ToUi {
     let in_use = vorax::data().odds.clone();
     let short = |c: &str| c.chars().take(7).collect::<String>();
     let warn = |m: &Meta| (!m.rules_changed.is_empty()).then(|| format!("Upstream rules changed ({} file{}): sync to rebuild", m.rules_changed.len(), if m.rules_changed.len() == 1 { "" } else { "s" }));
     match r {
         Ok(Checked::Current(m)) => {
             note(&format!("data up to date (upstream {})", short(&m.commit)));
-            super::window::ToUi::Status { odds: format!("{in_use} · up to date"), warn: warn(&m), ready: None, failed: false }
+            super::window::ToUi::Status { odds: format!("{in_use} · up to date"), warn: warn(&m), ready: None, failed: None }
         }
         Ok(Checked::Fetched(m)) => {
             note(&format!("fetched upstream {} (odds of {}){}", short(&m.commit), m.odds, if m.rules_changed.is_empty() { String::new() } else { format!("; rules changed: {}", m.rules_changed.join(", ")) }));
-            super::window::ToUi::Status { odds: format!("{in_use} · newer ready"), warn: warn(&m), ready: Some(m.odds.clone()), failed: false }
+            super::window::ToUi::Status { odds: format!("{in_use} · newer ready"), warn: warn(&m), ready: Some(m.odds.clone()), failed: None }
         }
-        Err(e) => {
+        Err((Failed::Offline, e)) => {
             note(&format!("update check failed: {e}"));
-            super::window::ToUi::Status { odds: format!("{in_use} · couldn't check for updates"), warn: None, ready: None, failed: true }
+            super::window::ToUi::Status { odds: format!("{in_use} · couldn't check for updates"), warn: None, ready: None, failed: Some(Failed::Offline) }
+        }
+        Err((Failed::Changed, e)) => {
+            note(&format!("upstream's newest data doesn't load in this build: {e}"));
+            let warn = Some("Upstream's data changed: sync to rebuild".to_string());
+            super::window::ToUi::Status { odds: format!("{in_use} · newer data needs a sync"), warn, ready: None, failed: Some(Failed::Changed) }
         }
     }
 }

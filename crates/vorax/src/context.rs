@@ -121,13 +121,13 @@ impl<'a> Ctx<'a> {
         self.emit(GameEvent::Mutate { to: m.archetype });
     }
 
-    /// Defaults: to = next rarity (Boss stays Boss), bonus = AWAKEN_BONUS[to]. Never lowers rarity.
+    /// Defaults: to = next rarity, bonus = AWAKEN_BONUS[to]. Never lowers rarity; a Boss stays Boss and gains nothing.
     pub fn awaken(&mut self, tank: usize, to: Option<Rarity>, bonus: Option<i64>) {
         let Some(mut m) = self.mon(tank) else { return };
         let from = m.rarity;
         let named = to.unwrap_or(from.next());
         let target = if named < from { from } else { named };
-        let gain = bonus.unwrap_or(AWAKEN_BONUS[target.index()]);
+        let gain = if from == Rarity::Boss { 0 } else { bonus.unwrap_or(AWAKEN_BONUS[target.index()]) };
         m.rarity = target;
         m.activity += gain;
         self.tanks[tank] = Some(m);

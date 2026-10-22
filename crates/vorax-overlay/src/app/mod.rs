@@ -211,7 +211,7 @@ fn selftest(out: PathBuf) {
     match update::check_within(std::time::Duration::from_secs(30)) {
         Ok(update::Checked::Current(m)) => println!("update: up to date with upstream {} (rule files changed since this build: {:?})", &m.commit[..7], m.rules_changed),
         Ok(update::Checked::Fetched(m)) => println!("update: fetched upstream {} with odds of {} into {} (rule files changed since this build: {:?})", &m.commit[..7], m.odds, update::updated_dir().display(), m.rules_changed),
-        Err(e) => println!("update: {e}"),
+        Err((_, e)) => println!("update: {e}"),
     }
     // the displays' colour mode: HDR changes the colours a capture gets
     unsafe {

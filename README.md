@@ -5,7 +5,7 @@
 
 A small Windows overlay for **Surgical Preparation**, the Vorax minigame of Torchlight: Infinite (SS11). It
 follows your game, reads the board when it changes and marks the move the Solver advises: the card (or the
-reroll) to take, the tanks to target, and how often that line reaches 950k.
+reroll) to take, the tanks to target, and how often that line reaches 900k.
 
 ![The overlay during a Vorax round: a cyan outline on the Xeno-Hormone card, a diamond above tank 1, and the pill "Xeno-Hormone → tank 1 · 38% reach 950k" at the top](docs/overlay.jpg)
 
@@ -21,7 +21,7 @@ keys, and it doesn't inject into or change the game: you make every move. This i
 
 - an outline on the card to take, or on the reroll button (cyan by default; five colours in the tray menu);
 - a diamond above each tank to target;
-- one small pill at the top with the move and how often it reaches 950k.
+- one small pill at the top with the move and how often it reaches 900k.
 
 Nothing else is drawn, and nothing is drawn outside the Surgical Preparation screen. The marks only show while the
 game is in front.
@@ -90,8 +90,8 @@ and hides its marks rather than leave ones for a board that's gone.
 potion board doesn't show them, so the overlay carries the count last read on an instrument offer, and before any
 offer this game, the level's. (Upstream counts them as 0 on every potion board, whatever level is picked.)
 
-**Updates.** At start and every 3 hours the overlay fetches upstream's newest data (odds, board value, instrument
-strengths, icons players named), checks it as strictly as a build checks its own, and keeps it in
+**Updates.** At start and every 3 hours the overlay fetches upstream's newest data (odds, board value, icons players
+named), checks it as strictly as a build checks its own, and keeps it in
 `%APPDATA%\VoraxRs\data`; it restarts itself to use it while no advice is showing. Card and reader *rules* are
 code: when upstream changes one, the tray menu says the port needs updating. In a build from source, **Sync and
 rebuild now** in the tray menu runs `scripts/sync.ps1` in the background with a progress card (`--sync` runs it in the console); when
@@ -194,7 +194,7 @@ about 2 s on one core, or 0.2 s per game when 12 cores each play their own.
 | `crates/vorax-overlay` | the overlay: `draw.rs` (the marks), `pipeline.rs`, and `app/` (capture, OCR, window, tray menu, updates, sync) |
 | `crates/vorax-cli` | the `vorax` command |
 | `tools/` | TypeScript run inside upstream to export its data and record traces; `make-icon.py` draws the icon |
-| `data/` | exported from upstream: cards, live odds, instrument strengths, board-value model; `data/scan/` the reader's references |
+| `data/` | exported from upstream: cards, live odds, board-value model; `data/scan/` the reader's references |
 | `fixtures/` | reference traces from upstream's TypeScript for the parity tests, and a live frame |
 | `scripts/` | `sync.ps1` (pull upstream, re-export, re-record, re-check, rebuild) and its daily task |
 | `upstream/` | a clone of the TypeScript repo (not committed; made by the sync) |
@@ -202,8 +202,8 @@ about 2 s on one core, or 0.2 s per game when 12 cores each play their own.
 ## Credits
 
 - **[tidewarden/tli-vorax-simulator](https://github.com/tidewarden/tli-vorax-simulator)** (MIT): the engine,
-  bots, Solver and screen reader this ports, and all the data (odds, board-value model, instrument strengths, the
-  reader's references, icons players named) and test frames. The game logic is theirs; this repository is a port
+  bots, Solver and screen reader this ports, and all the data (odds, board-value model, the reader's references,
+  icons players named) and test frames. The game logic is theirs; this repository is a port
   of it with its own overlay.
 - **[Moebing/Torchlight-Infinite-SS11-Vorax-simulator](https://github.com/Moebing/Torchlight-Infinite-SS11-Vorax-simulator)**
   (MIT): the original simulator upstream is based on.

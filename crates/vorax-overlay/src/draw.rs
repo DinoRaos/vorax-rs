@@ -1,5 +1,5 @@
 //! What the overlay draws, and drawing it: a gold outline on the card (or reroll) to take, a marker above each
-//! tank to target, and one small pill with the move and how often it reaches 950k. Pure drawing into an RGBA
+//! tank to target, and one small pill with the move and how often it reaches 900k. Pure drawing into an RGBA
 //! picture, so it can be previewed on a saved frame without the game.
 
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
@@ -16,7 +16,7 @@ const CARD_H: f64 = 340.0;
 pub struct Pill {
     /// the move: a card's name, with its tanks
     pub main: String,
-    /// how it ends: "64% reach 950k"
+    /// how it ends: "64% reach 900k"
     pub sub: String,
     /// the board is being read or worked out: the last advice, dimmed
     pub dim: bool,
@@ -47,7 +47,7 @@ impl Plan {
 }
 
 fn pct(x: f64) -> String {
-    format!("{:.0}% reach 950k", x * 100.0)
+    format!("{:.0}% reach {}k", x * 100.0, vorax::value::TARGET / 1000)
 }
 
 /// The hand positions the reading's names came from: unknown cards are left out of its hand.
@@ -274,7 +274,7 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
         let (big, small) = (23.0 * s, 18.0 * s);
         let gap = 16.0 * s;
         let mark = 12.0 * s;
-        // "33% reach 950k": the share in the accent, the rest in light grey
+        // "33% reach 900k": the share in the accent, the rest in light grey
         let (odds, rest) = match pill.sub.split_once(' ') {
             Some((a, b)) if a.ends_with('%') => (a.to_string(), format!(" {b}")),
             _ => (String::new(), pill.sub.clone()),

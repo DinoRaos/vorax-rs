@@ -5,6 +5,7 @@
 use super::sys::{client_rect, find_game_window, foreground, note, Hwnd, Settings};
 use super::menu::{put, Row};
 use super::sync::{Outcome, SyncMsg};
+use super::update::Failed;
 use crate::draw::{render, Fonts, Plan};
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -31,8 +32,8 @@ pub enum ToUi {
     /// close the overlay (the demo's end)
     Quit,
     /// the data in use, for the tray menu: `ready`, the odds of newer data waiting for a restart; `failed`,
-    /// the check couldn't reach upstream
-    Status { odds: String, warn: Option<String>, ready: Option<String>, failed: bool },
+    /// why the check came to nothing
+    Status { odds: String, warn: Option<String>, ready: Option<String>, failed: Option<Failed> },
     /// whether the game writes its moves to the log, which the overlay needs to read boards by itself
     GameLog(GameLog),
 }
@@ -395,7 +396,7 @@ fn tray_menu(hwnd: HWND) {
 
 /// What a check the player asked for found, in a card like the menu's: up to date, couldn't check, or newer
 /// data ready, with the choice to restart now or later.
-fn update_card(s: &State, failed: bool) {
+fn update_card(s: &State, failed: Option<Failed>) {
     let rows = match (&s.ready, failed) {
         (Some(new), _) => vec![
             Row::Header { title: "Update ready".into(), status: format!("Odds of {new} (in use: {})", vorax::data().odds) },
@@ -403,13 +404,19 @@ fn update_card(s: &State, failed: bool) {
             Row::Text("It takes a second; the game isn't touched.".into()),
             Row::Buttons { primary: (MENU_RESTART, "Restart now".into()), secondary: Some((MENU_LATER, "Later".into())) },
         ],
-        (None, true) => vec![
+        (None, Some(Failed::Offline)) => vec![
             Row::Header { title: "Couldn't check for updates".into(), status: "GitHub didn't answer in time".into() },
             Row::Text("The overlay keeps the data it has; it tries".into()),
             Row::Text("again in 3 hours, or when you ask.".into()),
             Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None },
         ],
-        (None, false) => vec![
+        (None, Some(Failed::Changed)) => vec![
+            Row::Header { title: "Newer data needs a rebuild".into(), status: "Upstream changed how its data is kept".into() },
+            Row::Text("This build can't read upstream's newest data;".into()),
+            Row::Text("the overlay keeps the data it has until a sync.".into()),
+            Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None },
+        ],
+        (None, None) => vec![
             Row::Header { title: "You're up to date".into(), status: format!("Odds of {}", vorax::data().odds) },
             Row::Text("Nothing newer upstream.".into()),
             Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None },

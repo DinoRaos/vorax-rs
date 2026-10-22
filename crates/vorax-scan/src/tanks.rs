@@ -75,6 +75,9 @@ pub fn archetype_of(img: &Img, r: &Rect) -> (Archetype, bool) {
 
 const MAX_COMBOS: usize = 200_000;
 
+/// Most stray glyphs dropped from one end of a line: a cursor over the label read as "21" (1x36 as 1x3621).
+const MAX_STRAY: usize = 2;
+
 fn readings(alts: &[Vec<char>]) -> Vec<(String, usize)> {
     if alts.iter().fold(1usize, |n, a| n.saturating_mul(a.len())) > MAX_COMBOS {
         return vec![];
@@ -104,18 +107,25 @@ pub fn reconcile(total: &[Vec<char>], aq: &[Vec<char>]) -> Option<(String, Strin
     if !total_fits.is_empty() {
         return best(&total_fits).map(|t| (t, aq_text));
     }
-    let ends = |s: &str| -> Vec<String> {
-        let c: Vec<char> = s.chars().collect();
-        if c.len() > 1 {
-            vec![c[1..].iter().collect(), c[..c.len() - 1].iter().collect()]
-        } else {
-            vec![]
+    // a sliver of the heart, or a cursor over the label, can pass as a glyph or two more at either end of a
+    // line: dropped if the rest then fits, the fewest first
+    for n in 1..=MAX_STRAY {
+        let ends = |s: &str| -> Vec<String> {
+            let c: Vec<char> = s.chars().collect();
+            if c.len() > n {
+                vec![c[n..].iter().collect(), c[..c.len() - n].iter().collect()]
+            } else {
+                vec![]
+            }
+        };
+        let mut trimmed: Vec<(String, String)> = ends(&aq_text).into_iter().filter(|t| stats(Some(&total_text), Some(t)).2).map(|t| (total_text.clone(), t)).collect();
+        trimmed.extend(ends(&total_text).into_iter().filter(|t| stats(Some(t), Some(&aq_text)).2).map(|t| (t, aq_text.clone())));
+        if trimmed.len() == 1 {
+            return trimmed.pop();
         }
-    };
-    let mut trimmed: Vec<(String, String)> = ends(&aq_text).into_iter().filter(|t| stats(Some(&total_text), Some(t)).2).map(|t| (total_text.clone(), t)).collect();
-    trimmed.extend(ends(&total_text).into_iter().filter(|t| stats(Some(t), Some(&aq_text)).2).map(|t| (t, aq_text.clone())));
-    if trimmed.len() == 1 {
-        return trimmed.pop();
+        if trimmed.len() > 1 {
+            return None;
+        }
     }
     let parts: Vec<&str> = aq_text.split('x').collect();
     let (a, q) = (parts.first().copied().unwrap_or(""), parts.get(1).copied().unwrap_or(""));

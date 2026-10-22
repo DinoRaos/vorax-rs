@@ -1,5 +1,5 @@
-//! The game data exported from upstream (tools/export-data.ts): cards, instruments, the live odds, instrument
-//! strengths and the board-value model. Embedded at build time; `VORAX_DATA=<dir>` loads a newer export at run
+//! The game data exported from upstream (tools/export-data.ts): cards, instruments, the live odds and the
+//! board-value model. Embedded at build time; `VORAX_DATA=<dir>` loads a newer export at run
 //! time instead, so a daily data update needs no rebuild.
 
 use crate::effects;
@@ -103,11 +103,6 @@ pub struct Data {
     pub box_offer: [f64; 256],
     pub instrument_offer: [f64; 256],
     pub spawn_rarity: [f64; 4],
-    /// instrument strength by id (0 when unknown), for picks inside playouts
-    pub prior: [f64; 256],
-    pub median_prior_basic: f64,
-    pub median_prior_advanced: f64,
-    pub is_basic: [bool; 256],
     pub model: Option<ValueModel>,
     /// position of each instrument in upstream's list (the board value's feature order)
     pub instrument_index: [u16; 256],
@@ -130,7 +125,6 @@ struct RawGame {
     box_offer: HashMap<String, f64>,
     instrument_offer: RawInstrumentOffer,
     spawn_rarity: HashMap<String, f64>,
-    strength: HashMap<String, f64>,
 }
 
 #[derive(Deserialize)]
@@ -277,21 +271,12 @@ impl Data {
             }
         }
         let mut instrument_offer = [1.0; 256];
-        let mut prior = [0.0; 256];
-        let mut is_basic = [false; 256];
         for d in &instruments {
             let pool = if d.pool == Pool::Basic { &raw.instrument_offer.basic } else { &raw.instrument_offer.advanced };
             if let Some(&w) = pool.get(&d.name) {
                 instrument_offer[d.id as usize] = w;
             }
-            prior[d.id as usize] = raw.strength.get(&d.name).copied().unwrap_or(0.0);
-            is_basic[d.id as usize] = d.pool == Pool::Basic;
         }
-        let median = |pool: Pool| {
-            let mut xs: Vec<f64> = instruments.iter().filter(|d| (d.pool == Pool::Basic) == (pool == Pool::Basic)).map(|d| prior[d.id as usize]).collect();
-            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            xs.get(xs.len() >> 1).copied().unwrap_or(0.0)
-        };
         let spawn = |r: &str| raw.spawn_rarity.get(r).copied().unwrap_or(0.0);
         let periodic = instruments.iter().filter(|d| matches!(d.timing, Timing::Periodic(_))).map(|d| d.id).collect();
 
@@ -300,8 +285,6 @@ impl Data {
             odds: raw.odds,
             supreme_chance: raw.supreme_chance,
             default_settings: Settings { potion_refreshes: raw.default_settings.potion_refreshes, instrument_refreshes: raw.default_settings.instrument_refreshes },
-            median_prior_basic: median(Pool::Basic),
-            median_prior_advanced: median(Pool::Advanced),
             potions,
             instruments,
             potion_at,
@@ -316,8 +299,6 @@ impl Data {
             box_offer,
             instrument_offer,
             spawn_rarity: [spawn("normal"), spawn("magic"), spawn("rare"), spawn("boss")],
-            prior,
-            is_basic,
             model,
             periodic,
         })

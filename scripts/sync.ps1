@@ -1,6 +1,6 @@
 # Daily sync with upstream (tidewarden/tli-vorax-simulator):
 #   1. pulls upstream/ (clones it the first time)
-#   2. exports its data (odds, cards, instrument strengths, board-value model, the screen reader's references) to data/
+#   2. exports its data (odds, cards, board-value model, the screen reader's references) to data/
 #   3. re-records the reference traces from its TypeScript engine, bot, advisor and screen reader into fixtures/
 #   4. runs the Rust parity tests against them and rebuilds the release binaries (vorax.exe, vorax-overlay.exe)
 # Exit code 0: the Rust port plays exactly like upstream with today's data. Non-zero: something to port (the

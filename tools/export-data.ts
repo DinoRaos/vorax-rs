@@ -8,7 +8,6 @@ import { execSync } from 'node:child_process'
 import { POTIONS } from '@/data/potions'
 import { INSTRUMENTS } from '@/data/instruments'
 import { LIVE_WEIGHTS } from '@/data/liveWeights'
-import STRENGTH from '@/data/instrumentStrength.json'
 import BOARD_VALUE from '@/data/boardValue.json'
 import { DEFAULT_SETTINGS } from '@/engine/game'
 
@@ -27,7 +26,6 @@ const game = {
   boxOffer: LIVE_WEIGHTS.boxOffer,
   instrumentOffer: LIVE_WEIGHTS.instrumentOffer,
   spawnRarity: LIVE_WEIGHTS.spawnRarity,
-  strength: STRENGTH.strength,
 }
 
 writeFileSync(join(out, 'game.json'), JSON.stringify(game, null, 2) + '\n')

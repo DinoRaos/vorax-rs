@@ -180,7 +180,10 @@ fn rollout(s: &GameState, rounds: u32, seed: u32, samples: u32, steer: f64, valu
             continue;
         }
         if s.phase == Phase::InstrumentSelect {
-            s = pick_and_confirm(&s, prior_pick(&s));
+            s = match value_pick(&s) {
+                Pick::Refresh => dispatch(&s, Action::Refresh),
+                Pick::Card(i) => pick_and_confirm(&s, i),
+            };
             r += 1;
             continue;
         }
@@ -242,18 +245,6 @@ pub fn choose(s: &GameState, p: &Policy, seed: u32) -> Choice {
 }
 
 
-/// Inside playouts: the offered instrument with the highest strength.
-pub fn prior_pick(s: &GameState) -> usize {
-    let prior = &data().prior;
-    let mut b = 0;
-    for (i, c) in s.hand.iter().enumerate() {
-        if prior[c.id as usize] > prior[s.hand[b].id as usize] {
-            b = i;
-        }
-    }
-    b
-}
-
 /// How an instrument offer is answered: a hand index, or a reroll.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Pick {
@@ -263,26 +254,10 @@ pub enum Pick {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Picker {
-    /// the strongest offered instrument
-    Prior,
-    /// the strongest, but a below-median offer is rerolled while rerolls last
-    RefreshingPrior,
     /// by the board value: the offered instrument whose board is worth most, or a reroll when none beats the board
     Value,
     /// board-aware: every offer (and a reroll) played to the end `playouts` times
-    Board { playouts: u32, rollout: Policy, goal: Goal, refresh_playouts: u32, smart: bool },
-}
-
-pub fn refreshing_prior_pick(s: &GameState) -> Pick {
-    let d = data();
-    let i = prior_pick(s);
-    let id = s.hand[i].id as usize;
-    let median = if d.is_basic[id] { d.median_prior_basic } else { d.median_prior_advanced };
-    if d.prior[id] < median && can_refresh(s) {
-        Pick::Refresh
-    } else {
-        Pick::Card(i)
-    }
+    Board { playouts: u32, rollout: Policy, goal: Goal, refresh_playouts: u32 },
 }
 
 pub fn value_pick(s: &GameState) -> Pick {
@@ -305,11 +280,9 @@ pub fn value_pick(s: &GameState) -> Pick {
 impl Picker {
     pub fn pick(&self, s: &GameState, seed: u32) -> Pick {
         match self {
-            Picker::Prior => Pick::Card(prior_pick(s)),
-            Picker::RefreshingPrior => refreshing_prior_pick(s),
             Picker::Value => value_pick(s),
-            Picker::Board { playouts, rollout, goal, refresh_playouts, smart } => {
-                let r = rank_instruments(s, seed, *playouts, &Chooser::Ev(*rollout), *goal, *refresh_playouts, *smart, false);
+            Picker::Board { playouts, rollout, goal, refresh_playouts } => {
+                let r = rank_instruments(s, seed, *playouts, &Chooser::Ev(*rollout), *goal, *refresh_playouts, false);
                 let mut best = 0;
                 for (i, &v) in r.offers.iter().enumerate() {
                     if v > r.offers[best] {
@@ -325,7 +298,7 @@ impl Picker {
     }
 }
 
-/// The score the advice aims for: 950,000 on the board, which the endgame battle bonus takes to rainbow.
+/// The score the advice aims for: 900,000 on the board, which the endgame battle bonus takes to rainbow.
 pub fn goal_score(ua: i64) -> f64 {
     ua.min(TARGET) as f64
 }
@@ -423,11 +396,10 @@ fn instrument_future(slim: &GameState, seed: u32, c: Pick, rollout: &Chooser, go
 }
 
 /// Futures `from` to `to` (excluded) of each instrument choice, played to the end of the run.
-/// `smart`: later instrument offers inside the futures are answered by the board value. `par`: over every core.
+/// Later instrument offers inside the futures are answered by the board value. `par`: over every core.
 #[allow(clippy::too_many_arguments)]
-pub fn instrument_futures(s: &GameState, seed: u32, choices: &[Pick], rollout: &Chooser, goal: Goal, from: u32, to: u32, smart: bool, par: bool) -> Vec<Tally> {
-    let picker = if smart { Picker::Value } else if goal == Goal::Target { Picker::RefreshingPrior } else { Picker::Prior };
-    tallies(choices.len(), from, to, par, |c, k| instrument_future(s, seed, choices[c], rollout, goal, k, &picker))
+pub fn instrument_futures(s: &GameState, seed: u32, choices: &[Pick], rollout: &Chooser, goal: Goal, from: u32, to: u32, par: bool) -> Vec<Tally> {
+    tallies(choices.len(), from, to, par, |c, k| instrument_future(s, seed, choices[c], rollout, goal, k, &Picker::Value))
 }
 
 /// Futures from..to for each of `n` options, totalled per option; in parallel when `par`. Goal values are whole
@@ -458,10 +430,10 @@ pub struct InstrumentRanking {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn rank_instruments(s: &GameState, seed: u32, playouts: u32, rollout: &Chooser, goal: Goal, refresh_playouts: u32, smart: bool, par: bool) -> InstrumentRanking {
+pub fn rank_instruments(s: &GameState, seed: u32, playouts: u32, rollout: &Chooser, goal: Goal, refresh_playouts: u32, par: bool) -> InstrumentRanking {
     let choices: Vec<Pick> = (0..s.hand.len()).map(Pick::Card).collect();
-    let each = instrument_futures(s, seed, &choices, rollout, goal, 0, playouts, smart, par);
-    let r = can_refresh(s).then(|| instrument_futures(s, seed, &[Pick::Refresh], rollout, goal, 0, refresh_playouts, smart, par)[0]);
+    let each = instrument_futures(s, seed, &choices, rollout, goal, 0, playouts, par);
+    let r = can_refresh(s).then(|| instrument_futures(s, seed, &[Pick::Refresh], rollout, goal, 0, refresh_playouts, par)[0]);
     InstrumentRanking {
         offers: each.iter().map(|e| e.goal / e.n as f64).collect(),
         refresh: r.map(|r| r.goal / r.n as f64),
@@ -525,10 +497,9 @@ pub fn shortlist(s: &GameState, seed: u32, la: &LookAhead) -> Vec<(Opt, f64)> {
 /// Futures `from` to `to` (excluded) of each potion option, played to the end of the run.
 pub fn potion_futures(s: &GameState, seed: u32, la: &LookAhead, opts: &[Opt], from: u32, to: u32, par: bool) -> Vec<Tally> {
     let inner = Chooser::Ev(Policy { samples: la.inner_samples.unwrap_or(2), horizon: 0, roll_samples: None, steer: la.steer, value: la.value });
-    let picker = if la.value.unwrap_or(false) { Picker::Value } else { Picker::Prior };
     tallies(opts.len(), from, to, par, |c, k| {
         let sk = mix(seed, 9000 + k);
-        let ua = ultimate_activity(&finish(&play_opt(&reseed(s, sk), &opts[c]), sk, &inner, &picker));
+        let ua = ultimate_activity(&finish(&play_opt(&reseed(s, sk), &opts[c]), sk, &inner, &Picker::Value));
         Tally { goal: goal_score(ua), reached: (ua >= TARGET) as u32, n: 1 }
     })
 }

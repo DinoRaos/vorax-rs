@@ -1,4 +1,4 @@
-//! The board value (src/strategy/value.ts): the final score (counted up to 950,000) games from a board tend to
+//! The board value (src/strategy/value.ts): the final score (counted up to the advice's target) games from a board tend to
 //! reach, learned by upstream from simulated games; and the build progress the steered player aims for
 //! (src/strategy/steer.ts). Sums are taken in the TypeScript's order so the values match bit for bit.
 
@@ -6,9 +6,13 @@ use crate::data::{data, Data, Timing, ValueModel};
 use crate::game::ultimate_activity;
 use crate::types::*;
 
-pub const TARGET: i64 = 950_000;
+/// The advice's target (bot.ts TARGET): the board value is counted up to it.
+pub const TARGET: i64 = 900_000;
+/// Where the features cap the score: 950,000, the target the shipped model was trained with, kept so it reads
+/// boards as it learned them.
+const FEATURE_CAP: i64 = 950_000;
 
-/// Predicted final score counted up to 950,000; once the game is over, the score itself (up to 950,000).
+/// Predicted final score counted up to 900,000; once the game is over, the score itself (up to 900,000).
 pub fn board_value(s: &GameState) -> f64 {
     let d = data();
     let Some(model) = &d.model else { return ultimate_activity(s) as f64 };
@@ -75,9 +79,9 @@ fn parts(s: &GameState) -> ([f64; HEAD], [f64; PAIRED], f64) {
         1.0,
         log_score,
         uaf / 1e6,
-        ua.min(TARGET) as f64 / 1e6,
+        ua.min(FEATURE_CAP) as f64 / 1e6,
         uaf.sqrt() / 1000.0,
-        b(ua >= TARGET),
+        b(ua >= FEATURE_CAP),
         sum_act as f64 / 1000.0,
         sum_qty as f64 / 3000.0,
         top_act as f64 / 1000.0,
@@ -158,7 +162,7 @@ pub fn tree_features(d: &Data, s: &GameState) -> Vec<f64> {
         b(s.t8000),
         b(s.t28000),
         libm::log1p(ua as f64),
-        ua.min(TARGET) as f64,
+        ua.min(FEATURE_CAP) as f64,
         ms.iter().map(|m| m.activity).sum::<i64>() as f64,
         ms.iter().map(|m| m.quantity).sum::<i64>() as f64,
         ms.iter().map(|m| m.activity).max().unwrap_or(0).max(0) as f64,

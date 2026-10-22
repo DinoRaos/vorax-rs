@@ -232,13 +232,11 @@ fn strategy_matches() {
         } else {
             let choices: Vec<Pick> = c["choices"].as_array().unwrap().iter().map(|x| if x == "refresh" { Pick::Refresh } else { Pick::Card(x.as_u64().unwrap() as usize) }).collect();
             let value = Chooser::Ev(Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) });
-            eq("futures", tallies(&instrument_futures(&s, seed, &choices, &value, Goal::Target, 0, 2, true, true)));
+            eq("futures", tallies(&instrument_futures(&s, seed, &choices, &value, Goal::Target, 0, 2, true)));
             let plain = Chooser::Ev(Policy::new(2, 0));
-            eq("futuresPrior", tallies(&instrument_futures(&s, seed, &choices, &plain, Goal::Target, 1, 3, false, false)));
-            eq("futuresMean", tallies(&instrument_futures(&s, seed, &choices, &plain, Goal::Mean, 0, 1, false, true)));
+            eq("futuresPlain", tallies(&instrument_futures(&s, seed, &choices, &plain, Goal::Target, 1, 3, false)));
+            eq("futuresMean", tallies(&instrument_futures(&s, seed, &choices, &plain, Goal::Mean, 0, 1, true)));
             eq("valuePicker", pick_json(value_pick(&s)));
-            eq("refreshingPriorPicker", pick_json(refreshing_prior_pick(&s)));
-            eq("priorPicker", pick_json(Pick::Card(prior_pick(&s))));
         }
     }
 }
@@ -265,7 +263,7 @@ fn whole_games_match() {
         let end = if c["chooser"] == "value" {
             run_game(seed, &Chooser::Ev(Policy { samples: 2, horizon: 0, roll_samples: None, steer: None, value: Some(true) }), &Picker::Value, None)
         } else {
-            run_game(seed, &Chooser::Ev(Policy { samples: 4, horizon: 0, roll_samples: None, steer: Some(0.3), value: None }), &Picker::RefreshingPrior, None)
+            run_game(seed, &Chooser::Ev(Policy { samples: 4, horizon: 0, roll_samples: None, steer: Some(0.3), value: None }), &Picker::Value, None)
         };
         let mine = snap(&end);
         assert!(same(&mine, &c["final"]), "game seed {seed} {}:\n    {}", c["chooser"], diff(&mine, &c["final"]));

@@ -209,14 +209,36 @@ pub fn glyphs(img: &Img, r: &Rect, kind: TextKind) -> Vec<Rect> {
         .collect();
     // as the TypeScript indexes it: a column just outside the box reads the row before or after, and one past
     // the ends of the array makes the count NaN (never the thinnest)
-    split_wide(clipped, |x| {
+    let split = split_wide(clipped, |x| {
         let mut n = 0.0;
         for y in top..=bottom {
             let i = (y * w) as isize + x - x0 as isize;
             n += if i >= 0 && (i as usize) < on.len() { on[i as usize] as f64 } else { f64::NAN };
         }
         n
-    })
+    });
+    if kind == TextKind::Label {
+        on_the_line(split, typical_h, row_bottom)
+    } else {
+        split
+    }
+}
+
+/// A tank label's glyphs without bright bits around it: a candle under the tank flickers into the band as a
+/// glyph or two, lower than the text and a gap away (1x36 read as 1x3621, 66x319 as 66x319661). The line
+/// is the longest run of glyphs on the text's bottom row with less than a glyph's height between them.
+fn on_the_line(gs: Vec<Rect>, typical_h: f64, row_bottom: f64) -> Vec<Rect> {
+    let mut runs: Vec<Vec<Rect>> = Vec::new();
+    for g in gs {
+        if row_bottom >= 0.0 && (g.y + g.h - 1.0 - row_bottom).abs() > 1f64.max(0.3 * typical_h) {
+            continue;
+        }
+        match runs.last_mut() {
+            Some(run) if g.x - (run[run.len() - 1].x + run[run.len() - 1].w) < typical_h => run.push(g),
+            _ => runs.push(vec![g]),
+        }
+    }
+    runs.into_iter().fold(Vec::new(), |best, run| if run.len() > best.len() { run } else { best })
 }
 
 /// Glyphs much wider than the typical one are touching digits: split them at their thinnest columns.

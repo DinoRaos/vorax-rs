@@ -14,6 +14,7 @@ use std::time::Instant;
 use vorax::advisor::{self, ScreenState};
 use vorax::bot::*;
 use vorax::game::ultimate_activity;
+use vorax::value::TARGET;
 
 fn arg<T: std::str::FromStr>(args: &[String], name: &str) -> Option<T> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok())
@@ -106,11 +107,11 @@ fn sim(args: &[String]) {
     let (chooser, picker) = match policy.as_str() {
         // the player inside the advice's futures
         "value" => (Chooser::Ev(Policy { samples: 2, horizon: 0, roll_samples: None, steer: None, value: Some(true) }), Picker::Value),
-        "steer" => (Chooser::Ev(Policy { samples: 4, horizon: 0, roll_samples: None, steer: Some(0.3), value: None }), Picker::RefreshingPrior),
+        "steer" => (Chooser::Ev(Policy { samples: 4, horizon: 0, roll_samples: None, steer: Some(0.3), value: None }), Picker::Value),
         // the Solver's own advice at every move: look-ahead potions, board-aware instruments (slow: a full advice per move)
         "solver" => (
             Chooser::Plan(advisor::LOOK_AHEAD),
-            Picker::Board { playouts: advisor::INSTRUMENT_FUTURES, rollout: Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) }, goal: Goal::Target, refresh_playouts: advisor::INSTRUMENT_FUTURES, smart: true },
+            Picker::Board { playouts: advisor::INSTRUMENT_FUTURES, rollout: Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) }, goal: Goal::Target, refresh_playouts: advisor::INSTRUMENT_FUTURES },
         ),
         p => fail(&format!("unknown policy {p}")),
     };
@@ -121,14 +122,15 @@ fn sim(args: &[String]) {
     scores.sort();
     let n = scores.len() as f64;
     let mean = scores.iter().sum::<i64>() as f64 / n;
-    let reached = scores.iter().filter(|&&s| s >= 950_000).count() as f64 / n * 100.0;
+    let reached = scores.iter().filter(|&&s| s >= TARGET).count() as f64 / n * 100.0;
     let rainbow = scores.iter().filter(|&&s| s >= 1_120_000).count() as f64 / n * 100.0;
     println!(
-        "{policy}: {games} games in {secs:.1}s ({:.1} games/s)  mean {mean:.0}  median {}  p10 {}  p90 {}  ≥950k {reached:.1}%  ≥1.12M {rainbow:.1}%",
+        "{policy}: {games} games in {secs:.1}s ({:.1} games/s)  mean {mean:.0}  median {}  p10 {}  p90 {}  ≥{}k {reached:.1}%  ≥1.12M {rainbow:.1}%",
         n / secs,
         scores[scores.len() / 2],
         scores[(n * 0.1) as usize],
-        scores[(n * 0.9) as usize]
+        scores[(n * 0.9) as usize],
+        TARGET / 1000
     );
 }
 

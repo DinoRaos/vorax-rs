@@ -14,7 +14,7 @@ import { ARCHETYPES, RARITIES, createMonster } from '@/data/archetypes'
 import { potion } from '@/data/potions'
 import { boardValue } from '@/strategy/value'
 import { buildProgress } from '@/strategy/steer'
-import { choose, evChooser, expected, instrumentFutures, options, potionFutures, refreshingPriorPicker, runGame, shortlist, valuePicker, priorPicker } from '@/strategy/bot'
+import { choose, evChooser, expected, instrumentFutures, options, potionFutures, runGame, shortlist, valuePicker } from '@/strategy/bot'
 import { advise, LOOK_AHEAD, type ScreenState } from '@/strategy/advisor'
 
 const out = resolve(process.argv[2] ?? '../fixtures')
@@ -117,10 +117,10 @@ for (const [i, s] of pick(60).entries()) {
     stratLines.push(JSON.stringify({ ...base, kind: 'potion', options: opts, quick, deep, valued, changes, choose: [c1, c2], shortlist: list, futures: fut, futuresSteer: futSteer }))
   } else {
     const choices = [...s.hand.map((_, k) => k), ...(canRefresh(s) ? ['refresh' as const] : [])]
-    const fut = instrumentFutures(s, seed, choices, evChooser({ samples: 4, horizon: 0, value: true }), 'target', 0, 2, true)
-    const futPrior = instrumentFutures(s, seed, choices, evChooser({ samples: 2, horizon: 0 }), 'target', 1, 3, false)
-    const futMean = instrumentFutures(s, seed, choices, evChooser({ samples: 2, horizon: 0 }), 'mean', 0, 1, false)
-    stratLines.push(JSON.stringify({ ...base, kind: 'instrument', choices, futures: fut, futuresPrior: futPrior, futuresMean: futMean, valuePicker: valuePicker(s, seed), refreshingPriorPicker: refreshingPriorPicker(s, seed), priorPicker: priorPicker(s, seed) }))
+    const fut = instrumentFutures(s, seed, choices, evChooser({ samples: 4, horizon: 0, value: true }), 'target', 0, 2)
+    const futPlain = instrumentFutures(s, seed, choices, evChooser({ samples: 2, horizon: 0 }), 'target', 1, 3)
+    const futMean = instrumentFutures(s, seed, choices, evChooser({ samples: 2, horizon: 0 }), 'mean', 0, 1)
+    stratLines.push(JSON.stringify({ ...base, kind: 'instrument', choices, futures: fut, futuresPlain: futPlain, futuresMean: futMean, valuePicker: valuePicker(s, seed) }))
   }
 }
 writeFileSync(join(out, 'strategy.jsonl'), stratLines.join('\n') + '\n')
@@ -163,7 +163,7 @@ const tg = Date.now()
 for (let seed = 1; seed <= 4; seed++) {
   const end = runGame(seed, evChooser({ samples: 2, horizon: 0, value: true }), valuePicker)
   gameLines.push(JSON.stringify({ seed, chooser: 'value', final: snap(end) }))
-  const end2 = runGame(seed, evChooser({ samples: 4, horizon: 0, steer: 0.3 }), refreshingPriorPicker)
+  const end2 = runGame(seed, evChooser({ samples: 4, horizon: 0, steer: 0.3 }), valuePicker)
   gameLines.push(JSON.stringify({ seed, chooser: 'steer', final: snap(end2) }))
 }
 writeFileSync(join(out, 'games.jsonl'), gameLines.join('\n') + '\n')
