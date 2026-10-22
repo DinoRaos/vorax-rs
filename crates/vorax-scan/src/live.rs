@@ -1,5 +1,9 @@
 //! Which game-log lines mean "the board changed", and when its animations have settled enough to look
-//! (src/solver/live/triggers.ts), and following the log as it grows (logFollower.ts).
+//! (src/solver/live/triggers.ts), following the log as it grows (logFollower.ts), and the round when its number
+//! can't be read (round.ts).
+
+use crate::tanks::js_number;
+use vorax::advisor::ScreenPhase;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Trigger {
@@ -188,5 +192,26 @@ impl Follower {
             parts.remove(0);
         }
         parts.iter().map(|l| String::from_utf8_lossy(l.strip_suffix(b"\r").unwrap_or(l)).into_owned()).collect()
+    }
+}
+
+/// The round to advise on when its number wasn't read for sure (an effect over it, a card raised in front of it).
+/// It used to fall back to round 1, so the advice played as if twelve rounds were left. Within a game the round
+/// only moves on a step at a time, so the round of the board before (`before`) stands in, or the reader's
+/// `guess` when it is that round or the next.
+pub fn carried_round(before: Option<i32>, phase: ScreenPhase, guess: Option<&str>) -> i32 {
+    let Some(before) = before.filter(|&r| r != 0) else { return 1 };
+    // rounds 11–13 are the Surgical Protocols; a card or instrument offer after them is a new game
+    if phase == ScreenPhase::Protocol {
+        return before.max(11);
+    }
+    if before > 10 {
+        return 1;
+    }
+    let g = guess.map_or(f64::NAN, js_number);
+    if g == before as f64 || g == (before + 1) as f64 {
+        g as i32
+    } else {
+        before
     }
 }

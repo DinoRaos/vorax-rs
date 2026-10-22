@@ -14,7 +14,7 @@ const DIGIT_MIN: f64 = 0.75;
 const MAX_STAT: f64 = 1_000_000.0;
 
 /// JavaScript's Number() of a string of digits: "" is 0, anything else not a number is NaN.
-fn js_number(s: &str) -> f64 {
+pub(crate) fn js_number(s: &str) -> f64 {
     let t = s.trim();
     if t.is_empty() {
         return 0.0;

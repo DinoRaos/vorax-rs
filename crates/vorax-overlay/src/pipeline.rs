@@ -4,6 +4,7 @@
 use crate::draw::{plan_for, Plan};
 use vorax::advisor::{advise_plan, Advice};
 use vorax_scan::layout::layout_at;
+use vorax_scan::live::carried_round;
 use vorax_scan::pixels::Img;
 use vorax_scan::reading::{Problem, Reading};
 use vorax_scan::titles::{pictures, read_titles};
@@ -27,7 +28,8 @@ pub struct Pipeline {
     pub shelley: i32,
     /// instrument rerolls left, as last read on an instrument offer this game (a potion board doesn't show them)
     instrument_refreshes: Option<i32>,
-    /// the last board advised on, with the size of its picture, for advising again when a setting changes
+    /// the last board advised on, with the size of its picture, for advising again when a setting changes (and
+    /// for its round, when the next board's can't be read)
     last: Option<(Reading, usize, usize)>,
 }
 
@@ -102,6 +104,12 @@ impl Pipeline {
         let mut reading = raw;
         reading.state.instruments = tr.instruments.clone();
         reading.state.instrument_rounds = Some(tr.rounds.clone());
+        // a round not read for sure: the one before stands in, not round 1 (before any board, round 1 as upstream's
+        // Solver starts)
+        if let Some(f) = reading.fields.get("round").filter(|f| !f.sure) {
+            let before = self.last.as_ref().map_or(Some(1), |(r, ..)| r.state.round);
+            reading.state.round = Some(carried_round(before, reading.state.phase, f.guess.as_deref()));
+        }
         reading.state.shelley = Some(self.shelley);
         self.fill_rerolls(&mut reading);
         let read_ms = t.elapsed().as_secs_f64() * 1000.0;

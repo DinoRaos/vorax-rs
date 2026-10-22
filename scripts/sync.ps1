@@ -35,7 +35,7 @@ $after = git -C $up rev-parse HEAD
 if ($before -ne $after) {
   $changed = git -C $up diff --name-only $before $after
   # rule code (not just data): what may need porting by hand
-  $rules = $changed | Where-Object { $_ -match '^src/(engine|strategy)/|^src/data/(potions/|instruments|archetypes|defs|shelley)|^src/solver/(scan/.*\.ts|track\.ts|live/(triggers|windowCrop)\.ts)' }
+  $rules = $changed | Where-Object { $_ -match '^src/(engine|strategy)/|^src/data/(potions/|instruments|archetypes|defs|shelley)|^src/solver/(scan/.*\.ts|track\.ts|live/(triggers|windowCrop|round)\.ts)' }
   Say "Upstream $($before.Substring(0,7)) -> $($after.Substring(0,7)): $(@($changed).Count) files changed"
   if ($rules) { Say "Rule code changed upstream (check the port): $($rules -join ', ')" }
   if ($changed -contains 'package-lock.json') { $needInstall = $true }

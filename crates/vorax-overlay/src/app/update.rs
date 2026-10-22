@@ -18,7 +18,7 @@ const REPO: &str = "tidewarden/tli-vorax-simulator";
 
 /// Upstream files that are rules (ported by hand), not data.
 fn is_rule_file(f: &str) -> bool {
-    let rules = ["src/engine/", "src/strategy/", "src/data/potions/", "src/data/instruments.ts", "src/data/archetypes.ts", "src/data/defs.ts", "src/data/shelley.ts", "src/solver/scan/", "src/solver/track.ts", "src/solver/live/triggers.ts", "src/solver/live/windowCrop.ts"];
+    let rules = ["src/engine/", "src/strategy/", "src/data/potions/", "src/data/instruments.ts", "src/data/archetypes.ts", "src/data/defs.ts", "src/data/shelley.ts", "src/solver/scan/", "src/solver/track.ts", "src/solver/live/triggers.ts", "src/solver/live/windowCrop.ts", "src/solver/live/round.ts"];
     rules.iter().any(|r| f.starts_with(r)) && f.ends_with(".ts")
 }
 
