@@ -141,8 +141,17 @@ pub fn track_instruments(t: &InstrumentTracker, r: &Reading, trigger: Option<&st
         }
         offer = None;
     } else {
+        // several picks between two boards (in round 1 two strong cards can reach the first reward at once): the
+        // ones known are still where they were, so they keep their rounds, and the new ones date from now, as a
+        // single pick would. Otherwise (the panel and what's known disagree) the rounds aren't known
+        let grew = count > owned.len() && !before_first_pick && panel.starts_with(&owned);
+        let now = match s.round {
+            None => 0,
+            Some(r) if is_instr => r + 1,
+            Some(r) => r,
+        };
+        rounds = if grew { (0..count).map(|i| rounds.get(i).copied().unwrap_or(if i == 0 { 1 } else { now })).collect() } else { vec![0; panel.len()] };
         owned = panel.clone();
-        rounds = vec![0; owned.len()];
         unsure.retain(|q| q.slot < owned.len());
         for (i, n) in owned.iter().enumerate() {
             let f = r.fields.get(&format!("instrument{}", i + start_items)).cloned().unwrap_or(FieldRead { sure: false, guess: Some(n.clone()), ..Default::default() });
