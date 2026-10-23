@@ -1,5 +1,6 @@
-//! Parity with upstream's TypeScript reader: every reading tools/record-scan.ts recorded (fixtures/scan.jsonl)
-//! from upstream's test frames, as they are, shrunk and recoloured, must come out the same here.
+//! The screen reader against tli-vorax-simulator's TypeScript reader (its last open version, 7b4c9ba): every
+//! reading recorded in fixtures/scan.jsonl from its test frames, as they are, shrunk and recoloured, must come out
+//! the same here.
 
 use serde_json::Value;
 use std::path::PathBuf;
@@ -95,7 +96,7 @@ fn checksum(img: &Img) -> Value {
     serde_json::json!([img.width, img.height, a, b])
 }
 
-/// record-scan.ts's misspell: the first a becomes o, the last e becomes c, the end cut off.
+/// The recording's misspell: the first a becomes o, the last e becomes c, the end cut off.
 fn misspell(n: &str) -> String {
     let mut s = n.replacen('a', "o", 1);
     if let Some(i) = s.rfind('e') {
@@ -108,7 +109,7 @@ fn misspell(n: &str) -> String {
 #[test]
 fn readings_match() {
     let data = scan_data();
-    let text = std::fs::read_to_string(root().join("fixtures/scan.jsonl")).expect("fixtures/scan.jsonl (run tools/record-scan.ts)");
+    let text = std::fs::read_to_string(root().join("fixtures/scan.jsonl")).expect("fixtures/scan.jsonl");
     let frames = root().join("upstream/tests/fixtures/frames");
     let mut failures = Vec::new();
     let mut checked = 0;

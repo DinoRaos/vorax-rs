@@ -79,8 +79,6 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     let mut game_open_since: Option<Instant> = None;
     let mut game_log: Option<GameLog> = None;
     let mut last_log_check = Instant::now() - Duration::from_secs(1);
-    // the start already looked; then every 3 hours (upstream's odds change at most hourly)
-    let mut last_check: Option<Instant> = Some(Instant::now());
     let t0 = Instant::now();
     let now_ms = || t0.elapsed().as_secs_f64() * 1000.0;
 
@@ -96,7 +94,6 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                         send(ToUi::Show(plan, w, h));
                     }
                 }
-                ToWorker::CheckUpdates => last_check = None,
             }
         }
         if follower.is_none() && looked_for_log.elapsed() > Duration::from_secs(10) {
@@ -153,10 +150,6 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                 game_log = Some(state);
                 send(ToUi::GameLog(state));
             }
-        }
-        if last_check.is_none_or(|t| t.elapsed() > Duration::from_secs(3 * 3600)) {
-            last_check = Some(Instant::now());
-            send(super::update::status(super::update::check_within(Duration::from_secs(30))));
         }
         let due = settler.due(now_ms());
         let relook = relook_at.is_some_and(|t| Instant::now() >= t);

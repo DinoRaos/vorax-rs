@@ -21,13 +21,9 @@ pub enum Row {
     Header { title: String, status: String },
     /// a line of text
     Text(String),
-    /// a smaller, dimmer line, cut to the card's width
-    Detail(String),
-    /// a progress bar, 0-1
-    Progress(f32),
     /// one or two buttons at the right: the first filled (the main choice); commands close the card
     Buttons { primary: (u32, String), secondary: Option<(u32, String)> },
-    /// a warning line (upstream's rules moved past this build)
+    /// a warning line (the game's log off or missing)
     Warn(String),
     Separator,
     /// a command; `shortcut` shown on the right
@@ -48,8 +44,6 @@ struct Menu {
     s: f32,
     /// the row and, on the levels row, the level under the mouse
     hover: Option<(usize, Option<i32>)>,
-    /// stays open when another window is clicked (a sync's progress); its buttons and Esc still close it
-    sticky: bool,
 }
 
 thread_local! {
@@ -72,8 +66,6 @@ fn height(r: &Row) -> f32 {
         Row::Levels { .. } => 48.0,
         Row::Colors { .. } => 40.0,
         Row::Text(_) => 22.0,
-        Row::Detail(_) => 20.0,
-        Row::Progress(_) => 22.0,
         Row::Buttons { .. } => 52.0,
     }
 }
@@ -153,27 +145,6 @@ fn render(m: &Menu) -> Pixmap {
         };
         match row {
             Row::Text(t) => text(&mut pm, &m.fonts.regular, t, 13.0 * s, ox + 16.0 * s, mid + 4.5 * s, (210, 200, 195), 1.0),
-            Row::Detail(t) => {
-                let room = cw - 32.0 * s;
-                let mut t = t.clone();
-                if measure(&m.fonts.regular, &t, 11.5 * s) > room {
-                    while !t.is_empty() && measure(&m.fonts.regular, &format!("{t}…"), 11.5 * s) > room {
-                        t.pop();
-                    }
-                    t.push('…');
-                }
-                text(&mut pm, &m.fonts.regular, &t, 11.5 * s, ox + 16.0 * s, mid + 4.0 * s, dim, 1.0);
-            }
-            Row::Progress(f) => {
-                let (bx, bw, bh) = (ox + 16.0 * s, cw - 32.0 * s, 6.0 * s);
-                if let Some(p) = rounded(bx, mid - bh / 2.0, bw, bh, bh / 2.0) {
-                    pm.fill_path(&p, &paint(rgba(255, 255, 255, 0.10)), FillRule::Winding, Transform::identity(), None);
-                }
-                let fw = (bw * f.clamp(0.0, 1.0)).max(bh);
-                if let Some(p) = rounded(bx, mid - bh / 2.0, fw, bh, bh / 2.0) {
-                    pm.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 0.95)), FillRule::Winding, Transform::identity(), None);
-                }
-            }
             Row::Buttons { primary, secondary } => {
                 let (p, s2) = button_boxes(&m.fonts, primary, secondary.as_ref());
                 let (bh, by) = (32.0 * s, mid - 16.0 * s);
@@ -336,45 +307,16 @@ fn redraw(m: &Menu) {
 
 /// Opens the menu by the cursor (above it, as the tray sits at the bottom), on top and focused.
 pub fn open(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
-    show(owner, rows, fonts, false, false);
-}
-
-/// Opens a card by the cursor that stays open when the player clicks elsewhere (the game), for `refresh` to
-/// update as something goes on.
-pub fn open_sticky(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
-    show(owner, rows, fonts, false, true);
-}
-
-/// New rows for the sticky card, if it's open, kept at its bottom right corner: whether it was.
-pub fn refresh(rows: Vec<Row>) -> bool {
-    with(|m| {
-        if !m.sticky {
-            return false;
-        }
-        let mut r = RECT::default();
-        unsafe {
-            let _ = GetWindowRect(m.hwnd, &mut r);
-        }
-        let changed = m.rows.len() != rows.len();
-        m.rows = rows;
-        if changed {
-            m.hover = None;
-        }
-        let pm = render(m);
-        let (w, h) = (pm.width() as i32, pm.height() as i32);
-        unsafe { put(m.hwnd, r.right - w, r.bottom - h, w, h, pm.data()) };
-        true
-    })
-    .unwrap_or(false)
+    show(owner, rows, fonts, false);
 }
 
 /// Opens a card by itself, in the main screen's corner by the tray, on top but without taking the focus (the
 /// game keeps it): a click on it or its button still answers, and clicking elsewhere after that closes it.
 pub fn notify(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
-    show(owner, rows, fonts, true, false);
+    show(owner, rows, fonts, true);
 }
 
-fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, by_tray: bool, sticky: bool) {
+fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, by_tray: bool) {
     close();
     unsafe {
         let Ok(instance) = GetModuleHandleW(None) else { return };
@@ -390,7 +332,7 @@ fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, by_tray: bool, sticky: bo
         let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
         let _ = GetMonitorInfoW(mon, &mut mi);
         let work = mi.rcWork;
-        let mut m = Menu { hwnd: HWND::default(), owner, rows, fonts, s, hover: None, sticky };
+        let mut m = Menu { hwnd: HWND::default(), owner, rows, fonts, s, hover: None };
         let pm = render(&m);
         let (w, h) = (pm.width() as i32, pm.height() as i32);
         // the card's corner at the cursor (or the work area's), kept inside the screen's work area
@@ -493,7 +435,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             close();
             LRESULT(0)
         }
-        WM_ACTIVATE if (wp.0 & 0xffff) as u32 == WA_INACTIVE && !with(|m| m.sticky).unwrap_or(false) => {
+        WM_ACTIVATE if (wp.0 & 0xffff) as u32 == WA_INACTIVE => {
             close();
             LRESULT(0)
         }
@@ -531,5 +473,5 @@ pub unsafe fn put(hwnd: HWND, x: i32, y: i32, w: i32, h: i32, rgba: &[u8]) {
 
 /// The menu drawn into a picture (for checking its look without opening it): `hover` lights that row.
 pub fn preview(rows: Vec<Row>, fonts: Rc<Fonts>, s: f32, hover: Option<(usize, Option<i32>)>) -> Pixmap {
-    render(&Menu { hwnd: HWND::default(), owner: HWND::default(), rows, fonts, s, hover, sticky: false })
+    render(&Menu { hwnd: HWND::default(), owner: HWND::default(), rows, fonts, s, hover })
 }

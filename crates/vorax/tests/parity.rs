@@ -1,6 +1,6 @@
-//! Parity with upstream's TypeScript: replays the traces tools/record-traces.ts recorded from it (fixtures/) and
-//! checks that every state, value, choice and piece of advice comes out the same. Re-record the traces after
-//! syncing upstream (scripts/sync.ps1); a failure names the first step that plays differently.
+//! Replays the traces recorded from tli-vorax-simulator's TypeScript (its last open version, 7b4c9ba) in
+//! fixtures/ and checks that every state, value, choice and piece of advice comes out the same, so a change can't
+//! make the engine play differently by accident; a failure names the first step that plays differently.
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ fn fixtures() -> PathBuf {
 }
 
 fn lines(name: &str) -> Vec<Value> {
-    let text = std::fs::read_to_string(fixtures().join(name)).unwrap_or_else(|e| panic!("{name}: {e} (run tools/record-traces.ts)"));
+    let text = std::fs::read_to_string(fixtures().join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
     text.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).unwrap()).collect()
 }
 
@@ -36,7 +36,7 @@ fn phase_name(p: Phase) -> &'static str {
     }
 }
 
-/// The same shape as record-traces.ts's snap().
+/// The same shape as the traces' states.
 fn snap(s: &GameState) -> Value {
     let a = |a: Archetype| serde_json::to_value(a).unwrap();
     let r = |r: Rarity| serde_json::to_value(r).unwrap();

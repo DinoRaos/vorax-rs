@@ -1,12 +1,10 @@
-//! The game data exported from upstream (tools/export-data.ts): cards, instruments, the live odds and the
-//! board-value model. Embedded at build time; `VORAX_DATA=<dir>` loads a newer export at run
-//! time instead, so a daily data update needs no rebuild.
+//! The game data (data/game.json, data/boardValue.json): cards, instruments, the live odds and the board-value
+//! model, as tli-vorax-simulator last published them (7b4c9ba, Oct 22 2026). Embedded at build time.
 
 use crate::effects;
 use crate::types::{EventType, Rarity, Settings};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::OnceLock;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -167,21 +165,14 @@ struct RawInstrumentOffer {
     advanced: HashMap<String, f64>,
 }
 
-/// The game data this build was compiled with, as exported (game.json).
-pub const EMBEDDED_GAME: &str = include_str!("../../../data/game.json");
+/// The game data this build was compiled with (game.json).
+const EMBEDDED_GAME: &str = include_str!("../../../data/game.json");
 const EMBEDDED_VALUE: &str = include_str!("../../../data/boardValue.json");
 
 impl Data {
     /// The data this build was compiled with.
     pub fn embedded() -> Result<Data, String> {
         Data::parse(EMBEDDED_GAME, Some(EMBEDDED_VALUE))
-    }
-
-    /// A data directory written by tools/export-data.ts (game.json, boardValue.json).
-    pub fn load_dir(dir: &Path) -> Result<Data, String> {
-        let game = std::fs::read_to_string(dir.join("game.json")).map_err(|e| format!("{}: {e}", dir.join("game.json").display()))?;
-        let value = std::fs::read_to_string(dir.join("boardValue.json")).ok();
-        Data::parse(&game, value.as_deref())
     }
 
     pub fn parse(game: &str, board_value: Option<&str>) -> Result<Data, String> {
@@ -349,18 +340,7 @@ pub fn norm(s: &str) -> String {
 
 static DATA: OnceLock<Data> = OnceLock::new();
 
-/// The game data: what `init` set, else `VORAX_DATA=<dir>` when set, else the embedded export.
+/// The game data this build was compiled with.
 pub fn data() -> &'static Data {
-    DATA.get_or_init(|| {
-        let loaded = match std::env::var_os("VORAX_DATA") {
-            Some(dir) => Data::load_dir(Path::new(&dir)),
-            None => Data::embedded(),
-        };
-        loaded.unwrap_or_else(|e| panic!("{e}"))
-    })
-}
-
-/// Use this data instead of the default; only before the first `data()` call.
-pub fn init(d: Data) -> Result<(), String> {
-    DATA.set(d).map_err(|_| "game data already loaded".to_string())
+    DATA.get_or_init(|| Data::embedded().unwrap_or_else(|e| panic!("{e}")))
 }

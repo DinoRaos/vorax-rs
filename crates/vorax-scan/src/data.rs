@@ -1,12 +1,10 @@
-//! The reader's reference data (src/solver/scan/data.json, learnedIcons.json, levels.json, and the names titles
-//! are matched against), exported by tools/export-scan.ts. Embedded at build time; VORAX_DATA=<dir> loads
-//! <dir>/scan instead.
+//! The reader's reference data (data/scan: data.json, learnedIcons.json, levels.json, and the names titles are
+//! matched against), as tli-vorax-simulator last published it. Embedded at build time.
 
 use crate::pixels::{Art, ArtFeature};
 use base64::Engine;
 use indexmap::IndexMap;
 use serde::Deserialize;
-use std::path::Path;
 use std::sync::OnceLock;
 
 #[derive(Deserialize)]
@@ -83,25 +81,10 @@ impl ScanData {
         )
     }
 
-    pub fn load_dir(dir: &Path) -> Result<ScanData, String> {
-        let read = |f: &str| std::fs::read_to_string(dir.join(f)).map_err(|e| format!("{}: {e}", dir.join(f).display()));
-        ScanData::parse(&read("data.json")?, &read("learnedIcons.json")?, &read("levels.json")?, &read("names.json")?)
-    }
 }
 
 static DATA: OnceLock<ScanData> = OnceLock::new();
 
 pub fn scan_data() -> &'static ScanData {
-    DATA.get_or_init(|| {
-        let loaded = match std::env::var_os("VORAX_DATA") {
-            Some(dir) => ScanData::load_dir(&Path::new(&dir).join("scan")),
-            None => ScanData::embedded(),
-        };
-        loaded.unwrap_or_else(|e| panic!("{e}"))
-    })
-}
-
-/// Use this reader data instead of the default; only before the first `scan_data()` call.
-pub fn init(d: ScanData) -> Result<(), String> {
-    DATA.set(d).map_err(|_| "reader data already loaded".to_string())
+    DATA.get_or_init(|| ScanData::embedded().unwrap_or_else(|e| panic!("{e}")))
 }

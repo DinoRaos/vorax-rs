@@ -1,12 +1,11 @@
 # Build output
 /target/
 
-# Clone of tidewarden/tli-vorax-simulator, managed by scripts/sync.ps1
+# A local clone of tli-vorax-simulator's last open version, if kept for reference
 /upstream/
 node_modules/
 
-# Local logs (sync.log is written by scripts/sync.ps1)
-sync.log
+# Local logs
 *.log
 
 # Editors, OS and local tool settings

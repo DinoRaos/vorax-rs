@@ -6,7 +6,7 @@
 //!   vorax sim [--games N] [--seed0 S] [--policy value|steer|solver] whole games, score stats
 //!   vorax read <screenshot.png> [--advise]                          read a screenshot of the game (and advise on it)
 //!   vorax info                                                      the data loaded (odds date, cards)
-//! Data: the build's embedded export, or VORAX_DATA=<dir> (tools/export-data.ts output) for a newer one.
+//! Data: what the build embedded (data/).
 
 use std::io::Read;
 use std::path::PathBuf;

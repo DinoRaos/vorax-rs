@@ -55,6 +55,4 @@ features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
-  "Web_Http",
-  "Web_Http_Headers",
 ]
