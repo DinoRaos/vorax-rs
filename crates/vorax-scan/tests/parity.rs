@@ -110,7 +110,7 @@ fn misspell(n: &str) -> String {
 fn readings_match() {
     let data = scan_data();
     let text = std::fs::read_to_string(root().join("fixtures/scan.jsonl")).expect("fixtures/scan.jsonl");
-    let frames = root().join("upstream/tests/fixtures/frames");
+    let frames = root().join("fixtures/frames");
     let mut failures = Vec::new();
     let mut checked = 0;
     let mut tracker = InstrumentTracker::default();
@@ -193,7 +193,7 @@ fn readings_match() {
 #[test]
 fn settler_matches() {
     use vorax_scan::live::{classify, log_time, Settler};
-    let lines: Vec<String> = std::fs::read_to_string(root().join("upstream/tests/fixtures/vorax-log-excerpt.log"))
+    let lines: Vec<String> = std::fs::read_to_string(root().join("fixtures/vorax-log-excerpt.txt"))
         .unwrap()
         .split('\n')
         .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())

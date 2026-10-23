@@ -1,4 +1,6 @@
-# Check out text as LF everywhere, so data/ and fixtures/ stay byte-identical to what upstream's tools export
+# Check out text as LF everywhere, so data/ and fixtures/ stay byte-identical to what was recorded
 * text=auto eol=lf
 *.png binary
+# a game log as the game writes it (CRLF), kept byte for byte
+fixtures/vorax-log-excerpt.txt -text
 *.ico binary

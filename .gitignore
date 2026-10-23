@@ -1,10 +1,6 @@
 # Build output
 /target/
 
-# A local clone of tli-vorax-simulator's last open version, if kept for reference
-/upstream/
-node_modules/
-
 # Local logs
 *.log
 

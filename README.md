@@ -172,8 +172,7 @@ about 2 s on one core, or 0.2 s per game when 12 cores each play their own.
 | `crates/vorax-overlay` | the overlay: `draw.rs` (the marks), `pipeline.rs`, and `app/` (capture, OCR, window, tray menu) |
 | `crates/vorax-cli` | the `vorax` command |
 | `data/` | cards, odds, board-value model; `data/scan/` the reader's references |
-| `fixtures/` | the recorded traces the tests replay, and a live frame |
-| `tools/` | `make-icon.py` draws the icon |
+| `fixtures/` | what the tests replay: recorded traces, test screenshots and a game log |
 
 ## Credits
 
