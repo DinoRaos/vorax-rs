@@ -80,7 +80,12 @@ fn parse(text: &str) -> Vec<Run> {
         }
         let Some((head, state)) = msg.split_once("; board ") else { continue };
         let Ok(s) = serde_json::from_str::<Value>(state) else { continue };
-        let round = s["round"].as_i64().unwrap_or(0);
+        let mut round = s["round"].as_i64().unwrap_or(0);
+        // a protocol board is round 11-13: one read lower (older logs: round 12 read as 2 while the screen faded in
+        // again) takes the round before it
+        if s["phase"] == "protocol" && round < 11 {
+            round = runs.last().filter(|_| open).map_or(11, |r| r.last().round.max(11));
+        }
         if head.starts_with("screen") {
             protocols = false;
         }
@@ -598,5 +603,23 @@ mod reopen_tests {
         .join("\n");
         let runs = parse(&log);
         assert_eq!(runs.iter().map(|r| r.boards.len()).collect::<Vec<_>>(), vec![1, 4]);
+    }
+}
+
+#[cfg(test)]
+mod protocol_round_tests {
+    use super::parse;
+
+    /// Round 12's protocol board read as "2" (the screen fading in again) stays in its run, as round 12.
+    #[test]
+    fn a_protocol_board_read_below_round_11_keeps_its_run() {
+        let b = |t: u32, trigger: &str, round: u32, phase: &str| {
+            format!(r#"{t}.0 {trigger} 1920x1080: picture 400 ms, read 300 ms, advice 1 ms → (nothing to advise); board {{"tanks":[{{"archetype":"pest","rarity":"magic","activity":300,"quantity":500}},null,null,null,null,null],"hand":["Trepanation"],"instruments":["Chrysalis Specimen"],"phase":"{phase}","round":{round}}}"#)
+        };
+        let log = [b(1, "screen", 1, "instrument"), b(2, "board", 11, "protocol"), b(3, "board", 12, "protocol"), b(4, "screen", 2, "protocol")].join("
+");
+        let runs = parse(&log);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].boards.iter().map(|b| b.round).collect::<Vec<_>>(), vec![1, 11, 12, 12]);
     }
 }

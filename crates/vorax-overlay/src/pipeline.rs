@@ -84,6 +84,7 @@ impl Pipeline {
     /// `frame`: the captured game window; `trigger`: "screen" when the log says a new game opened.
     pub fn run(&mut self, frame: &Img, trigger: Option<&str>, ocr: TextReader) -> Outcome {
         let t = std::time::Instant::now();
+        self.resumed = false;
         let data = scan_data();
         let img = match windowed_game(frame) {
             Some(a) => crop_to(frame, &a),
@@ -127,8 +128,12 @@ impl Pipeline {
         reading.state.instruments = tr.instruments.clone();
         reading.state.instrument_rounds = Some(tr.rounds.clone());
         // a round not read for sure: the one before stands in, not round 1 (before any board, round 1 as upstream's
-        // Solver starts)
-        if let Some(f) = reading.fields.get("round").filter(|f| !f.sure) {
+        // Solver starts). So does one that can't be: a protocol board below round 11, or a round going back when the
+        // screen opened again on the game under way (still fading in, round 12 read as 2)
+        let before_round = self.last.as_ref().and_then(|(r, ..)| r.state.round);
+        let read_round = reading.state.round.unwrap_or(1);
+        let impossible = (reading.state.phase == vorax::advisor::ScreenPhase::Protocol && read_round < 11) || (self.resumed && before_round.is_some_and(|b| read_round < b));
+        if let Some(f) = reading.fields.get("round").filter(|f| !f.sure || impossible) {
             let before = self.last.as_ref().map_or(Some(1), |(r, ..)| r.state.round);
             reading.state.round = Some(carried_round(before, reading.state.phase, f.guess.as_deref()));
         }
