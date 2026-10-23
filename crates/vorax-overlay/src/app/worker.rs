@@ -229,6 +229,9 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
     let mut read_text = |img: &vorax_scan::pixels::Img| ocr.and_then(|o| o.read(img).ok()).unwrap_or_default();
     let reader: crate::pipeline::TextReader = if ocr.is_some() { Some(&mut read_text) } else { None };
     let outcome = pipe.run(&frame, trigger, reader);
+    if pipe.resumed {
+        note("the Vorax screen opened again on the game under way: it goes on (instruments kept)");
+    }
     let kind = match &outcome {
         Outcome::Advice { .. } => "board",
         Outcome::Animating => "animating",

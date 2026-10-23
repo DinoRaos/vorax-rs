@@ -112,8 +112,11 @@ fn parse(text: &str) -> Vec<Run> {
                 .join("  ·  "),
             score,
         };
-        // a new run: after the screen closed, or when the round goes back (a new game)
-        let new = !open || runs.last().is_none_or(|r| round < r.last().round);
+        // a new run: when the round goes back (a new game), or after the screen closed when it opens on a new game
+        // (round 1, an empty instrument panel); opened again on the game under way (Escape and back, to skip long
+        // animations), the run goes on
+        let fresh = round <= 1 && board.instruments.is_empty();
+        let new = runs.last().is_none_or(|r| round < r.last().round) || (!open && fresh);
         if new {
             runs.push(Run { at, boards: Vec::new() });
             open = true;
@@ -568,5 +571,32 @@ mod tests {
         assert_eq!(runs[0].boards.len(), 1);
         assert_eq!(runs[1].boards.len(), 4);
         assert_eq!(runs[1].last().round, 12);
+    }
+}
+
+#[cfg(test)]
+mod reopen_tests {
+    use super::parse;
+
+    fn board(t: u32, trigger: &str, round: u32, phase: &str, instruments: &str) -> String {
+        let m = r#"{"archetype":"agito","rarity":"normal","activity":30,"quantity":40}"#;
+        format!(r#"{t}.0 {trigger} 1920x1080: picture 400 ms, read 300 ms, advice 1 ms → Xeno-Hormone · 40% reach 840k; board {{"tanks":[{m},null,null,null,null,null],"hand":["Xeno-Hormone"],"instruments":[{instruments}],"phase":"{phase}","round":{round}}}"#)
+    }
+
+    /// Escape and back mid-game (to skip long animations) is the same run; a new game after it is a new one.
+    #[test]
+    fn a_screen_opened_again_goes_on_with_the_run() {
+        let log = [
+            board(1, "screen", 1, "instrument", ""),
+            board(2, "board", 4, "potion", r#""Chrysalis Specimen""#),
+            "3.0 the game's Vorax screen closed".to_string(),
+            board(4, "screen", 5, "potion", r#""Chrysalis Specimen""#),
+            board(5, "board", 6, "potion", r#""Chrysalis Specimen""#),
+            "6.0 the game's Vorax screen closed".to_string(),
+            board(7, "screen", 1, "instrument", ""),
+        ]
+        .join("\n");
+        let runs = parse(&log);
+        assert_eq!(runs.iter().map(|r| r.boards.len()).collect::<Vec<_>>(), vec![1, 4]);
     }
 }

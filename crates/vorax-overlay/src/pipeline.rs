@@ -37,6 +37,9 @@ pub struct Pipeline {
     /// closing (its end animation, the rewards). Read as a board it gave six 1×1 monsters in "round 1"; round 13's
     /// own board may not be read first (caught mid-animation, or its number read as 12)
     protocols: bool,
+    /// the last read was the Vorax screen opened again on the game under way (Escape and back, to skip long
+    /// animations), not a new game
+    pub resumed: bool,
 }
 
 /// Instrument rerolls a game starts with, by Intern Shelley level (src/data/shelley.ts).
@@ -46,7 +49,7 @@ pub fn shelley_rerolls(level: i32) -> i32 {
 
 impl Pipeline {
     pub fn new(shelley: i32) -> Pipeline {
-        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false }
+        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false }
     }
 
     /// The board's instrument rerolls: as read on an instrument offer, else carried from the last one this game,
@@ -102,6 +105,12 @@ impl Pipeline {
         if raw.has(|p| matches!(p, Problem::NotFound)) {
             return Outcome::NotGame;
         }
+        // the screen opened again on the game under way (Escape and back skips long animations): a new game starts in
+        // round 1 with an empty instrument panel, so icons in the panel or a round past 1 mean the same game goes on,
+        // and what's known of it (instruments and their rounds, rerolls) is kept
+        let round_sure = raw.fields.get("round").is_some_and(|f| f.sure);
+        self.resumed = trigger == Some("screen") && self.last.is_some() && (!raw.state.instruments.is_empty() || (round_sure && raw.state.round.unwrap_or(1) > 1));
+        let trigger = if self.resumed { None } else { trigger };
         if trigger == Some("screen") {
             self.instrument_refreshes = None;
             self.protocols = false;
