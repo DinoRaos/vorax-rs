@@ -227,6 +227,7 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Outcome::Advice { .. } => "board",
         Outcome::Animating => "animating",
         Outcome::NotGame => "notgame",
+        Outcome::Closing => "closing",
     };
     let animating = matches!(outcome, Outcome::Animating);
     match outcome {
@@ -246,6 +247,10 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Outcome::Animating => {
             note(&format!("{}: picture {grabbed} ms, a card was flying off: the last advice stands", trigger.unwrap_or("manual")));
             send(ToUi::Unbusy);
+        }
+        Outcome::Closing => {
+            note(&format!("{}: the game closing after the protocols, not a board", trigger.unwrap_or("manual")));
+            send(ToUi::Clear);
         }
         Outcome::NotGame => {
             note(&format!("{}: not the Surgical Preparation screen", trigger.unwrap_or("manual")));

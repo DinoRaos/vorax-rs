@@ -19,6 +19,8 @@ pub enum Outcome {
     NotGame,
     /// a card flying off as it's played: the last advice still stands
     Animating,
+    /// the game closing after round 13's last pick (its end animation, the rewards): not a board
+    Closing,
     /// advice for the board, with its marks
     Advice { reading: Box<Reading>, advice: Box<Advice>, plan: Plan, read_ms: f64 },
 }
@@ -31,6 +33,10 @@ pub struct Pipeline {
     /// the last board advised on, with the size of its picture, for advising again when a setting changes (and
     /// for its round, when the next board's can't be read)
     last: Option<(Reading, usize, usize)>,
+    /// this game reached the Surgical Protocols (rounds 11-13): a board after them with no cards in hand is the game
+    /// closing (its end animation, the rewards). Read as a board it gave six 1×1 monsters in "round 1"; round 13's
+    /// own board may not be read first (caught mid-animation, or its number read as 12)
+    protocols: bool,
 }
 
 /// Instrument rerolls a game starts with, by Intern Shelley level (src/data/shelley.ts).
@@ -40,7 +46,7 @@ pub fn shelley_rerolls(level: i32) -> i32 {
 
 impl Pipeline {
     pub fn new(shelley: i32) -> Pipeline {
-        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None }
+        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false }
     }
 
     /// The board's instrument rerolls: as read on an instrument offer, else carried from the last one this game,
@@ -98,7 +104,14 @@ impl Pipeline {
         }
         if trigger == Some("screen") {
             self.instrument_refreshes = None;
+            self.protocols = false;
         }
+        // a new game opens with "screen" and an instrument offer: cards in hand
+        let protocol = raw.state.phase == vorax::advisor::ScreenPhase::Protocol;
+        if self.protocols && !protocol && raw.state.hand.is_empty() {
+            return Outcome::Closing;
+        }
+        self.protocols |= protocol;
         let tr = track_instruments(&self.tracker, &raw, trigger);
         self.tracker = tr.tracker.clone();
         let mut reading = raw;

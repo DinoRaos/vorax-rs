@@ -260,6 +260,7 @@ fn selftest(out: PathBuf) {
                 crate::pipeline::Outcome::Advice { advice, plan, read_ms, .. } => println!("read in {read_ms:.0} ms, advice in {} ms: {:?}", advice.ms, plan.pill.map(|p| p.main)),
                 crate::pipeline::Outcome::Animating => println!("read: a card is moving"),
                 crate::pipeline::Outcome::NotGame => println!("read: not the Surgical Preparation screen (expected outside Vorax)"),
+                crate::pipeline::Outcome::Closing => println!("read: the game closing after round 13"),
             }
         }
         Ok(None) => println!("capture: no frame"),

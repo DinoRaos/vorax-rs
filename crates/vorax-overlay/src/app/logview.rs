@@ -67,16 +67,28 @@ fn short(a: &str) -> &str {
 fn parse(text: &str) -> Vec<Run> {
     let mut runs: Vec<Run> = Vec::new();
     let mut open = false;
+    // the run reached the protocols: a board after them with no cards in hand is the game closing (older logs read
+    // it as a board: six 1×1 monsters in "round 1")
+    let mut protocols = false;
     for line in text.lines() {
         let Some((t, msg)) = line.split_once(' ') else { continue };
         let at: f64 = t.parse().unwrap_or(0.0);
         if msg.contains("Vorax screen closed") || msg.starts_with("Vorax overlay") {
             open = false;
+            protocols = false;
             continue;
         }
         let Some((head, state)) = msg.split_once("; board ") else { continue };
         let Ok(s) = serde_json::from_str::<Value>(state) else { continue };
         let round = s["round"].as_i64().unwrap_or(0);
+        if head.starts_with("screen") {
+            protocols = false;
+        }
+        let protocol = s["phase"] == "protocol";
+        if protocols && !protocol && s["hand"].as_array().is_none_or(|h| h.is_empty()) {
+            continue;
+        }
+        protocols |= protocol;
         let advice = head.split_once(" → ").map_or("", |x| x.1).trim();
         let (mv, pct) = match advice.rsplit_once(" · ") {
             Some((m, p)) => (m.trim().to_string(), p.split('%').next().and_then(|n| n.trim().parse().ok())),
@@ -526,4 +538,35 @@ pub fn preview(log: &str, fonts: Rc<Fonts>, s: f32, h: f32) -> Pixmap {
         *o = true;
     }
     render(&View { hwnd: HWND::default(), fonts, s, h, runs, open, scroll: 0.0, hover: None })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    fn board(t: u32, trigger: &str, round: u32, phase: &str, hand: &str, tank: (u32, u32)) -> String {
+        let m = format!(r#"{{"archetype":"agito","rarity":"normal","activity":{},"quantity":{}}}"#, tank.0, tank.1);
+        format!(r#"{t}.0 {trigger} 1920x1080: picture 400 ms, read 300 ms, advice 1 ms → (nothing to advise); board {{"tanks":[{m},{m},null,null,null,null],"hand":[{hand}],"instruments":[],"phase":"{phase}","round":{round}}}"#)
+    }
+
+    /// The game closing after the protocols, read as a board (no cards, six 1×1 monsters, "round 1"), isn't a run.
+    #[test]
+    fn the_game_closing_is_not_a_run() {
+        let log = [
+            board(1, "screen", 1, "instrument", r#""Chrysalis Specimen","Incubation Sac""#, (1, 36)),
+            board(2, "board", 10, "potion", r#""Xeno-Hormone""#, (300, 500)),
+            board(3, "board", 11, "protocol", r#""Laser Amputation""#, (320, 500)),
+            board(4, "board", 12, "protocol", r#""Trepanation""#, (340, 500)),
+            board(5, "board", 1, "potion", "", (1, 1)),
+            "6.0 the game's Vorax screen closed".to_string(),
+            board(7, "screen", 1, "instrument", r#""Aberrant Sprout","Prismatic Liver""#, (1, 36)),
+        ]
+        .join("\n");
+        let runs = parse(&log);
+        assert_eq!(runs.len(), 2, "{:?}", runs.iter().map(|r| r.boards.len()).collect::<Vec<_>>());
+        // newest first: the new game, then the first one with its 4 real boards
+        assert_eq!(runs[0].boards.len(), 1);
+        assert_eq!(runs[1].boards.len(), 4);
+        assert_eq!(runs[1].last().round, 12);
+    }
 }

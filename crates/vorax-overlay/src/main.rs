@@ -51,6 +51,7 @@ fn preview(input: &std::path::Path, output: &std::path::Path, shelley: i32, acce
         }
         pipeline::Outcome::Animating => return Err("a card is flying off: nothing to advise".into()),
         pipeline::Outcome::NotGame => return Err("not the Surgical Preparation screen".into()),
+        pipeline::Outcome::Closing => return Err("the game closing after round 13".into()),
     };
     eprintln!("total {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
     // a windowed capture's marks sit inside its frame
