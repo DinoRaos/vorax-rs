@@ -11,6 +11,13 @@ use vorax::stack::StackVec;
 use vorax::types::*;
 use vorax::value::{board_value, build_progress};
 
+/// The recorded traces were made with tli-vorax-simulator's linear board value (7b4c9ba), not the trees the program
+/// ships: every test plays with that one.
+fn linear_board_value() {
+    let _ = vorax::data::use_model(Some(include_str!("../../../fixtures/boardValue-linear.json")));
+    assert!(matches!(vorax::data().model, Some(vorax::data::ValueModel::Rounds { .. })), "the tests need the linear board value");
+}
+
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
 }
@@ -148,6 +155,7 @@ fn setup_from(v: &Value) -> Option<SandboxSetup> {
 
 #[test]
 fn engine_traces_match() {
+    linear_board_value();
     let mut steps = 0;
     for g in lines("engine.jsonl") {
         let settings = Settings { potion_refreshes: g["settings"]["potionRefreshes"].as_i64().unwrap() as i32, instrument_refreshes: g["settings"]["instrumentRefreshes"].as_i64().unwrap() as i32 };
@@ -194,6 +202,7 @@ fn pick_json(p: Pick) -> Value {
 
 #[test]
 fn strategy_matches() {
+    linear_board_value();
     let la = advisor::LOOK_AHEAD;
     for (n, c) in lines("strategy.jsonl").iter().enumerate() {
         let s = state_from(&c["state"]);
@@ -243,6 +252,7 @@ fn strategy_matches() {
 
 #[test]
 fn advisor_matches() {
+    linear_board_value();
     for (n, c) in lines("advisor.jsonl").iter().enumerate() {
         let screen: ScreenState = serde_json::from_value(c["screen"].clone()).unwrap();
         let mut plan = serde_json::to_value(advisor::advise(&screen, 16, true, true)).unwrap();
@@ -258,6 +268,7 @@ fn advisor_matches() {
 
 #[test]
 fn whole_games_match() {
+    linear_board_value();
     for c in lines("games.jsonl") {
         let seed = c["seed"].as_u64().unwrap() as u32;
         let end = if c["chooser"] == "value" {

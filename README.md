@@ -1,7 +1,7 @@
-# Vorax overlay (Rust)
+# Vorax Solver (Rust)
 
-> **Unofficial fan project.** Not affiliated with or endorsed by the developers or publishers of Torchlight:
-> Infinite. Game names and images belong to their owners. Use at your own risk.
+> **Unofficial fan project.** Not affiliated with or endorsed by XD Inc., the developer and publisher of
+> Torchlight: Infinite. Game names and images belong to their owners. Use at your own risk.
 
 A small Windows overlay for **Surgical Preparation**, the Vorax minigame of Torchlight: Infinite (SS11). It
 follows your game, reads the board when it changes and marks the move the Solver advises: the card (or the
@@ -10,8 +10,8 @@ reroll) to take, the tanks to target, and how often that line reaches 840k.
 ![The overlay during a Vorax round: a cyan outline on the Anesthetic Tincture - Agito card, tank 2's glass glowing cyan, and the pill "Anesthetic Tincture - Agito → tank 2 · 33% reach 840k" at the top](docs/overlay.jpg)
 
 Inspired by CoffeeBns's Tartarus Simulator and tidewarden's Vorax Solver (see [Credits](#credits)). Under the
-overlay is a game engine, Solver and screen reader in Rust, about 130× faster on one core than the TypeScript
-they started from.
+overlay is a game engine, Solver and screen reader in Rust, with a board value trained on 1.5 million simulated
+games (see [The board value](#the-board-value)).
 
 **Read-only.** It reads the game window and the game's log file and draws on top. It never clicks or presses
 keys, and it doesn't inject into or change the game: you make every move (see [AGENTS.md](AGENTS.md)). Changes
@@ -38,7 +38,7 @@ your Windows language (tested with German). Without it, the pictures decide.
 
 ## Download
 
-Get `vorax-overlay.exe` from the [latest release](https://github.com/DinoRaos/vorax-rs/releases/latest) and run
+Get `vorax-overlay.exe` from the [latest release](https://github.com/DinoRaos/vorax-solver-rs/releases/latest) and run
 it; there is nothing to install. Windows may say "Windows protected your PC" because the program isn't signed:
 click **More info** → **Run anyway**. The release notes list each file's SHA-256 if you want to check your
 download.
@@ -51,8 +51,8 @@ release brings any change.
 You need [Rust](https://rustup.rs) (stable) and the Visual Studio Build Tools with "Desktop development with C++".
 
 ```powershell
-git clone https://github.com/DinoRaos/vorax-rs.git
-cd vorax-rs
+git clone https://github.com/DinoRaos/vorax-solver-rs.git
+cd vorax-solver-rs
 cargo build --release                          # a few minutes the first time
 .\target\release\vorax-overlay.exe
 ```
@@ -88,8 +88,8 @@ and hides its marks rather than leave ones for a board that's gone.
 potion board doesn't show them, so the overlay carries the count last read on an instrument offer, and before any
 offer this game, the level's.
 
-**Data.** The card odds, the board-value model (trained for the 840k target) and the screen reader's references
-are built in (`data/`), as tli-vorax-simulator last published them on Oct 22, 2026.
+**Data.** The card odds (as of Oct 22, 2026), the board value and the screen reader's references are built in
+(`data/`).
 
 ## How it works
 
@@ -100,26 +100,47 @@ are built in (`data/`), as tli-vorax-simulator last published them on Oct 22, 20
    yellow border.
 3. **Reading** (`crates/vorax-scan`): tanks, cards, round, rerolls, instruments and the instrument tracker, with
    card titles read by Windows' OCR and the pictures deciding where a title doesn't settle. About 0.5 s per board.
-4. **Advice** (`crates/vorax`): the Solver's look-ahead on every core, about 5–25 ms.
+4. **Advice** (`crates/vorax`): the Solver's look-ahead on every core, about 5–90 ms.
 5. **Overlay** (`crates/vorax-overlay`): a transparent, click-through, topmost window over the game's picture,
    shown only while the game is in front, redrawn only when the advice changes.
 
 ## Why Rust
 
-tli-vorax-simulator was TypeScript in a web page (and an Electron app), which is right for a site anyone can open.
-An overlay that sits next to the game all evening asks for something else:
+An overlay that sits next to the game all evening asks for:
 
-- **Speed.** The Solver's look-ahead plays out many futures for every option. In TypeScript, advice on a hard
-  board took up to 20 s on one core; here it takes 143 ms on one core and 20 ms on all of them, so it is ready
-  the moment the cards land. Most of the gap is the game state: the TypeScript deep-copied it (with its log) on
-  every action, while the Rust state is a fixed-size value that copies in a single memcpy, and
-  [rayon](https://github.com/rayon-rs/rayon) spreads the futures over every core.
-- **Reading in 0.5 s instead of about 5 s.** The same reading, compiled.
+- **Speed.** The Solver's look-ahead plays out many futures for every option, and every future rates thousands of
+  boards; on all cores the advice is ready in under 0.1 s, the moment the cards land. The game state is a
+  fixed-size value that copies in a single memcpy, and [rayon](https://github.com/rayon-rs/rayon) spreads the
+  futures over every core.
+- **Reading in about 0.5 s.**
 - **One small program.** A ~5 MB exe with no runtime, browser or Electron, idle while the board doesn't change.
   It uses what Windows already has: Windows Graphics Capture for the game window alone, Windows OCR for card
   titles, and a layered window for the marks.
-- **Exact.** Rust leaves the order of float sums and random draws in our hands, so the engine matched the
-  TypeScript bit for bit (`log1p` comes from `libm`, the same fdlibm algorithm V8 uses), and the tests keep it so.
+- **Training at scale.** The same engine plays thousands of simulated games a second, so the board value learns
+  from millions of them.
+
+## The board value
+
+The Solver judges where a board is headed by its board value: the final score (counted up to 840k) that games
+from a board like it tend to reach, given its monsters, instruments and round. The one built in is 120 decision
+trees (gradient boosting, fitted with [LightGBM](https://github.com/microsoft/LightGBM)) on 30 million boards from
+1.5 million simulated games under the built-in odds. Against the linear board value the Solver started with, on
+the same 6,000 games played with the Solver's full advice:
+
+| Board value | Reached 840k | Average counted to 840k |
+|---|---|---|
+| Linear (656 weights per round) | 68.9% | 771,122 |
+| **Trees (built in)** | **72.1%** | **774,617** |
+
+The trees reached 840k in 1,175 games the linear one didn't, and missed 986 it reached; a split that uneven by
+luck is less than a 0.1% chance. They make the advice about five times slower, still under 0.1 s.
+
+```powershell
+.	argeteleaseorax train --games 2000000 --out linear.json    # a linear board value, fitted here
+.	argeteleaseorax train --games 1500000 --rows boards.bin    # boards as rows, for fitting trees
+.	argeteleaseorax sim --policy solver --games 6000 --model a.json --scores a.txt
+.	argeteleaseorax gate built-in.txt a.txt                    # seed by seed: more games reaching 840k?
+```
 
 ## The `vorax` command
 
@@ -128,14 +149,16 @@ An overlay that sits next to the game all evening asks for something else:
 .\target\release\vorax advise --quick < s.json # this round's expected score only
 .\target\release\vorax read shot.png --advise  # read a screenshot of the game (and advise on it)
 .\target\release\vorax sim --games 1000 --policy value   # value | steer | solver
-.\target\release\vorax bench fixtures          # advice timings against the TypeScript's
+.\target\release\vorax bench fixtures          # advice timings on the 8 recorded screens
 .\target\release\vorax info                    # the data in use
 ```
 
+`--model <model.json|none>` on any command plays with another board value.
+
 ## Tests
 
-`cargo test --release --workspace` replays traces recorded from tli-vorax-simulator's TypeScript (its last
-open version, 7b4c9ba), so a change can't make the engine, Solver or reader play differently by accident:
+`cargo test --release --workspace` replays recorded traces, so a change can't make the engine, Solver or reader
+play differently by accident:
 
 - 300 random games (normal and sandbox starts, every instrument), 11,627 actions: the full state after every
   action, including the RNG state, board value and build progress;
@@ -147,21 +170,15 @@ open version, 7b4c9ba), so a change can't make the engine, Solver or reader play
   and ranking, the card titles with three stand-in text readers, and the instrument tracker through a game), and
   the log settler on a recorded game log.
 
-Everything matches exactly, floats included. A deliberate change to how the game plays (new odds, a new target)
-changes the traces too, so it needs new ones.
+Everything matches exactly, floats included. The tests play with the linear board value the traces were recorded
+with (`fixtures/boardValue-linear.json`), not the trees the program ships, and also check that a board's features
+give exactly what the linear board value computes.
 
 ## Speed
 
-Solver advice on the 8 recorded screens (12 threads):
-
-| | Total | Per screen |
-|---|---|---|
-| TypeScript, 1 core (Node 24) | 75.0 s | 24 ms – 20.3 s |
-| Rust, 1 core | 0.57 s | 0.1 – 143 ms |
-| Rust, all cores | 0.08 s | 0.1 – 20 ms |
-
-Whole games: 19,000 games/s with the board-value bot. A game with the Solver's full advice at every move takes
-about 2 s on one core, or 0.2 s per game when 12 cores each play their own.
+Solver advice on the 8 recorded screens with the built-in trees: up to 90 ms a screen on 12 threads (0.33 s for
+all 8), up to about 0.5 s on one core. Whole games: about 3,500 a second with the board-value bot; a game with the
+Solver's full advice at every move takes about 10 s on one core, or 1 s per game when 12 cores each play their own.
 
 ## Layout
 
@@ -170,9 +187,9 @@ about 2 s on one core, or 0.2 s per game when 12 cores each play their own.
 | `crates/vorax` | engine (`game.rs`, `context.rs`, `effects.rs`), board value (`value.rs`), bots (`bot.rs`), Solver (`advisor.rs`) |
 | `crates/vorax-scan` | screen reader, instrument tracker and log settler (`scan.rs`, `titles.rs`, `track.rs`, `live.rs`) |
 | `crates/vorax-overlay` | the overlay: `draw.rs` (the marks), `pipeline.rs`, and `app/` (capture, OCR, window, tray menu) |
-| `crates/vorax-cli` | the `vorax` command |
-| `data/` | cards, odds, board-value model; `data/scan/` the reader's references |
-| `fixtures/` | what the tests replay: recorded traces, test screenshots and a game log |
+| `crates/vorax-cli` | the `vorax` command, and training (`train.rs`) |
+| `data/` | cards, odds, the board value (trees); `data/scan/` the reader's references |
+| `fixtures/` | what the tests replay: recorded traces, the linear board value, test screenshots and a game log |
 
 ## Credits
 

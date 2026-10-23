@@ -24,15 +24,22 @@ pub fn board_value(s: &GameState) -> f64 {
             let at = (s.round.max(1) as usize).min(rounds.len()) - 1;
             weighted(d, s, &rounds[at])
         }
-        ValueModel::Trees { base, trees } => {
-            let x = tree_features(d, s);
-            let mut v = *base;
-            for t in trees {
-                let mut n = 0usize;
-                while t.f[n] >= 0 {
-                    n = if x[t.f[n] as usize] < t.t[n] { t.l[n] } else { t.r[n] };
+        ValueModel::Trees { .. } => {
+            let forest = d.forest.as_ref().expect("a tree model's forest");
+            let mut buf = [0.0; TREE_MAX];
+            let n = tree_features_into(d, s, &mut buf);
+            let x = &buf[..n];
+            let mut v = forest.base;
+            for &root in &forest.roots {
+                let mut i = root as usize;
+                loop {
+                    let node = forest.nodes[i];
+                    if node.f < 0 {
+                        v += node.t;
+                        break;
+                    }
+                    i = if x[node.f as usize] < node.t { node.l } else { node.r } as usize;
                 }
-                v += t.v[n];
             }
             v
         }
@@ -145,13 +152,84 @@ fn weighted(d: &Data, s: &GameState, w: &[f64]) -> f64 {
     v
 }
 
+/// How many features a board has for the linear board value: the head, a block per instrument, a pair for every two.
+pub fn feature_count(d: &Data) -> usize {
+    let n = d.instruments.len();
+    HEAD + n * BLOCK + n * (n - 1) / 2
+}
+
+/// A board's features for the linear board value, as (index, value) for those that aren't 0, by index: the numbers
+/// `weighted` sums against a round's weights, for fitting them.
+pub fn features(d: &Data, s: &GameState, out: &mut Vec<(u32, f64)>) {
+    out.clear();
+    let (head, paired, log_score) = parts(s);
+    for (i, &v) in head.iter().enumerate() {
+        if v != 0.0 {
+            out.push((i as u32, v));
+        }
+    }
+    let count = d.instruments.len();
+    let mut owned: crate::stack::StackVec<u16, MAX_EQUIPPED> = crate::stack::StackVec::new();
+    for e in &s.instruments {
+        let i = d.instrument_index[e.id as usize];
+        if i != u16::MAX && !owned.contains(&i) {
+            owned.push(i);
+        }
+    }
+    owned.as_mut_slice().sort();
+    for &i in &owned {
+        let o = HEAD + i as usize * BLOCK;
+        out.push((o as u32, 1.0));
+        for (k, &p) in paired.iter().enumerate() {
+            if p != 0.0 {
+                out.push(((o + 1 + k) as u32, p));
+            }
+        }
+        if log_score != 0.0 {
+            out.push(((o + 1 + PAIRED) as u32, log_score));
+        }
+    }
+    for a in 0..owned.len() {
+        for b in a + 1..owned.len() {
+            let (i, j) = (owned[a] as usize, owned[b] as usize);
+            out.push(((HEAD + count * BLOCK + i * count - (i * (i + 1)) / 2 + (j - i - 1)) as u32, 1.0));
+        }
+    }
+}
+
+/// The most raw numbers a board has for decision trees.
+const TREE_MAX: usize = 160;
+
 /// A board in raw numbers for decision trees (TREE_FEATURES order).
 pub fn tree_features(d: &Data, s: &GameState) -> Vec<f64> {
+    let mut buf = [0.0; TREE_MAX];
+    let n = tree_features_into(d, s, &mut buf);
+    buf[..n].to_vec()
+}
+
+/// `tree_features` into a buffer, without allocating: how many it wrote. The board value calls it for every board
+/// the futures rate, so the monsters are counted in one pass.
+fn tree_features_into(d: &Data, s: &GameState, x: &mut [f64; TREE_MAX]) -> usize {
     let ua = ultimate_activity(s);
-    let ms: Vec<&Monster> = s.monsters().collect();
-    let count = |ok: &dyn Fn(&Monster) -> bool| ms.iter().filter(|m| ok(m)).count() as f64;
-    let b = |x: bool| if x { 1.0 } else { 0.0 };
-    let mut x = vec![
+    let (mut arch, mut rar, mut both) = ([0usize; 4], [0usize; 4], [[0usize; 4]; 4]);
+    let (mut big, mut qty275, mut act255, mut n) = (0usize, 0usize, 0usize, 0usize);
+    let (mut sum_act, mut sum_qty, mut top_act, mut top_qty, mut top_group) = (0i64, 0i64, 0i64, 0i64, 0i64);
+    for m in s.monsters() {
+        n += 1;
+        arch[m.archetype as usize] += 1;
+        rar[m.rarity as usize] += 1;
+        both[m.rarity as usize][m.archetype as usize] += 1;
+        big += (m.activity > 150 && m.quantity > 150) as usize;
+        qty275 += (m.quantity > 275) as usize;
+        act255 += (m.activity > 255) as usize;
+        sum_act += m.activity;
+        sum_qty += m.quantity;
+        top_act = top_act.max(m.activity);
+        top_qty = top_qty.max(m.quantity);
+        top_group = top_group.max(m.total());
+    }
+    let b = |v: bool| if v { 1.0 } else { 0.0 };
+    let head = [
         s.round as f64,
         b(s.phase == Phase::InstrumentSelect),
         b(s.phase == Phase::RoundEnd),
@@ -163,38 +241,31 @@ pub fn tree_features(d: &Data, s: &GameState) -> Vec<f64> {
         b(s.t28000),
         libm::log1p(ua as f64),
         ua.min(FEATURE_CAP) as f64,
-        ms.iter().map(|m| m.activity).sum::<i64>() as f64,
-        ms.iter().map(|m| m.quantity).sum::<i64>() as f64,
-        ms.iter().map(|m| m.activity).max().unwrap_or(0).max(0) as f64,
-        ms.iter().map(|m| m.quantity).max().unwrap_or(0).max(0) as f64,
-        ms.iter().map(|m| m.total()).max().unwrap_or(0).max(0) as f64,
-        ms.len() as f64,
+        sum_act as f64,
+        sum_qty as f64,
+        top_act as f64,
+        top_qty as f64,
+        top_group as f64,
+        n as f64,
     ];
-    for a in ARCHETYPES {
-        x.push(count(&|m| m.archetype == a));
-    }
-    for r in RARITIES {
-        x.push(count(&|m| m.rarity == r));
-    }
-    for r in RARITIES {
-        for a in ARCHETYPES {
-            x.push(count(&|m| m.rarity == r && m.archetype == a));
-        }
-    }
-    x.push(count(&|m| m.activity > 150 && m.quantity > 150));
-    x.push(count(&|m| m.quantity > 275));
-    x.push(count(&|m| m.activity > 255));
+    let mut k = 0;
+    let mut push = |v: f64| {
+        x[k] = v;
+        k += 1;
+    };
+    head.into_iter().for_each(&mut push);
+    arch.iter().chain(&rar).chain(both.iter().flatten()).chain(&[big, qty275, act255]).for_each(|&c| push(c as f64));
     // a Map from the instruments list: the last of a duplicated id wins
     let acquired = |id: u8| s.instruments.iter().rev().find(|e| e.id == id).map(|e| e.acquired_round);
     for def in &d.instruments {
-        x.push(b(acquired(def.id).is_some()));
+        push(b(acquired(def.id).is_some()));
     }
     for &id in &d.periodic {
         let every = match d.instrument(id).unwrap().timing {
             Timing::Periodic(e) => e,
             _ => 0,
         };
-        x.push(match acquired(id) {
+        push(match acquired(id) {
             None => -1.0,
             Some(at) => {
                 let mut k = 0;
@@ -208,7 +279,7 @@ pub fn tree_features(d: &Data, s: &GameState) -> Vec<f64> {
             }
         });
     }
-    x
+    k
 }
 
 /// How far the owned instruments' conditions are met, 0 to 1 averaged; 1 when none needs anything.
@@ -263,5 +334,46 @@ pub fn build_progress(s: &GameState) -> f64 {
         1.0
     } else {
         sum / needs as f64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bot::{options, play_opt, pick_and_confirm};
+    use crate::game::{create_game, dispatch};
+
+    /// The features summed against a round's weights give what `weighted` gives, on boards from whole games.
+    #[test]
+    fn features_sum_to_the_board_value() {
+        let _ = crate::data::use_model(Some(include_str!("../../../fixtures/boardValue-linear.json")));
+        let d = data();
+        let Some(ValueModel::Rounds { rounds }) = &d.model else { panic!("no linear model") };
+        assert_eq!(rounds[0].len(), feature_count(d));
+        let mut x = Vec::new();
+        let mut boards = 0;
+        for seed in 1..40u32 {
+            let mut s = create_game(d.default_settings, None, Some(seed));
+            for g in 0..300usize {
+                if s.phase == Phase::GameOver {
+                    break;
+                }
+                let w = &rounds[(s.round.max(1) as usize).min(rounds.len()) - 1];
+                features(d, &s, &mut x);
+                let sum: f64 = x.iter().map(|&(i, v)| w[i as usize] * v).sum();
+                let want = weighted(d, &s, w);
+                assert!((sum - want).abs() <= 1e-9 * want.abs().max(1.0), "seed {seed} step {g}: {sum} vs {want}");
+                boards += 1;
+                s = match s.phase {
+                    Phase::RoundEnd => dispatch(&s, Action::Confirm),
+                    Phase::InstrumentSelect => pick_and_confirm(&s, g % s.hand.len()),
+                    _ => {
+                        let o = options(&s);
+                        play_opt(&s, &o[g % o.len()])
+                    }
+                };
+            }
+        }
+        assert!(boards > 500);
     }
 }

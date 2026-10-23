@@ -1,6 +1,6 @@
 [package]
 name = "vorax"
-description = "Rust port of the tli-vorax-simulator engine, bot and advisor (read-only advice; never plays the game)"
+description = "Engine, bots and Solver for the Vorax minigame of Torchlight: Infinite (read-only advice; never plays the game)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

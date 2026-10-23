@@ -1,5 +1,6 @@
-//! The game data (data/game.json, data/boardValue.json): cards, instruments, the live odds and the board-value
-//! model, as tli-vorax-simulator last published them (7b4c9ba, Oct 22 2026). Embedded at build time.
+//! The game data (data/game.json, data/boardValue.json): cards, instruments and the odds as of Oct 22, 2026, and the
+//! board value, trained with `vorax train` (decision trees; the tests use the linear one in fixtures/). Embedded at
+//! build time.
 
 use crate::effects;
 use crate::types::{EventType, Rarity, Settings};
@@ -72,6 +73,40 @@ pub struct Tree {
     pub v: Vec<f64>,
 }
 
+/// A tree node packed for walking: an inner node's feature (`f`), threshold (`t`) and children, or a leaf
+/// (`f` < 0) whose value is `t`.
+#[derive(Clone, Copy, Debug)]
+pub struct Node {
+    pub f: i32,
+    pub l: u32,
+    pub r: u32,
+    pub t: f64,
+}
+
+/// A tree model's trees in one array, each from its root, for walking without chasing five arrays per tree.
+#[derive(Clone, Debug)]
+pub struct Forest {
+    pub base: f64,
+    pub roots: Vec<u32>,
+    pub nodes: Vec<Node>,
+}
+
+impl Forest {
+    fn pack(base: f64, trees: &[Tree]) -> Forest {
+        let mut nodes = Vec::new();
+        let mut roots = Vec::with_capacity(trees.len());
+        for t in trees {
+            let at = nodes.len() as u32;
+            roots.push(at);
+            for i in 0..t.f.len() {
+                let leaf = t.f[i] < 0;
+                nodes.push(Node { f: t.f[i], l: at + t.l[i] as u32, r: at + t.r[i] as u32, t: if leaf { t.v[i] } else { t.t[i] } });
+            }
+        }
+        Forest { base, roots, nodes }
+    }
+}
+
 /// Weights per round (one per feature), or decision trees added to `base`; the prediction is in millions.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
@@ -102,6 +137,8 @@ pub struct Data {
     pub instrument_offer: [f64; 256],
     pub spawn_rarity: [f64; 4],
     pub model: Option<ValueModel>,
+    /// a tree model's trees packed for walking
+    pub forest: Option<Forest>,
     /// position of each instrument in upstream's list (the board value's feature order)
     pub instrument_index: [u16; 256],
     pub periodic: Vec<u8>,
@@ -290,6 +327,10 @@ impl Data {
             box_offer,
             instrument_offer,
             spawn_rarity: [spawn("normal"), spawn("magic"), spawn("rare"), spawn("boss")],
+            forest: match &model {
+                Some(ValueModel::Trees { base, trees }) => Some(Forest::pack(*base, trees)),
+                _ => None,
+            },
             model,
             periodic,
         })
@@ -343,4 +384,11 @@ static DATA: OnceLock<Data> = OnceLock::new();
 /// The game data this build was compiled with.
 pub fn data() -> &'static Data {
     DATA.get_or_init(|| Data::embedded().unwrap_or_else(|e| panic!("{e}")))
+}
+
+/// For training: the built-in game data with another board value (a model's JSON, or None for none, when boards
+/// are judged by their score). Only before the first `data()` call.
+pub fn use_model(board_value: Option<&str>) -> Result<(), String> {
+    let d = Data::parse(EMBEDDED_GAME, Some(board_value.unwrap_or("null")))?;
+    DATA.set(d).map_err(|_| "game data already loaded".to_string())
 }

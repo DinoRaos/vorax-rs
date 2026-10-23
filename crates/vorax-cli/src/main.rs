@@ -6,15 +6,20 @@
 //!   vorax sim [--games N] [--seed0 S] [--policy value|steer|solver] whole games, score stats
 //!   vorax read <screenshot.png> [--advise]                          read a screenshot of the game (and advise on it)
 //!   vorax info                                                      the data loaded (odds date, cards)
-//! Data: what the build embedded (data/).
+//!   vorax train [--games N] [--check M] [--seed0 S] [--eps E] --out model.json   fit a board value on simulated games
+//!   vorax train [--games N] [--seed0 S] [--eps E] --rows boards.bin  the games' boards as raw rows, for decision trees
+//!   vorax gate champion.txt challenger.txt                          a new board value against the one in use
+//! Data: what the build embedded (data/). --model <model.json|none> on any command uses another board value
+//! (none: boards judged by their score); for train, it's the board value the training games are played by.
 
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Instant;
 use vorax::advisor::{self, ScreenState};
 use vorax::bot::*;
-use vorax::game::ultimate_activity;
 use vorax::value::TARGET;
+
+mod train;
 
 fn arg<T: std::str::FromStr>(args: &[String], name: &str) -> Option<T> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok())
@@ -26,14 +31,32 @@ fn main() {
     if let Some(n) = arg::<usize>(&args, "--threads") {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
+    if let Some(m) = arg::<String>(&args, "--model") {
+        let json = (m != "none").then(|| std::fs::read_to_string(&m).unwrap_or_else(|e| fail(&format!("{m}: {e}"))));
+        vorax::data::use_model(json.as_deref()).unwrap_or_else(|e| fail(&e));
+    }
     match cmd {
         "advise" => advise(&args[1..]),
         "bench" => bench(&args[1..]),
         "sim" => sim(&args[1..]),
         "info" => info(),
         "read" => read(&args[1..]),
+        "train" => {
+            let a = &args[1..];
+            let games = arg(a, "--games").unwrap_or(100_000);
+            if let Some(path) = arg::<String>(a, "--rows") {
+                let seed0 = arg(a, "--seed0").unwrap_or(5_000_000);
+                return train::rows(seed0, seed0 + games, arg(a, "--eps").unwrap_or(0.1), vorax::data().model.is_some(), &path);
+            }
+            let out: String = arg(a, "--out").unwrap_or_else(|| fail("train: --out model.json (or --rows boards.bin)"));
+            train::train(games, arg(a, "--check").unwrap_or((games / 10).max(1000)), arg(a, "--seed0").unwrap_or(5_000_000), arg(a, "--eps").unwrap_or(0.1), vorax::data().model.is_some(), &out)
+        }
+        "gate" => match &args[1..] {
+            [a, b, ..] => train::gate(a, b),
+            _ => fail("usage: vorax gate champion.txt challenger.txt"),
+        },
         _ => {
-            eprintln!("usage: vorax advise [screen.json] [--futures N] [--quick] [--single] | bench [fixtures] | sim [--games N] [--seed0 S] [--policy value|steer|solver] | info   (--threads N on any)");
+            eprintln!("usage: vorax advise [screen.json] [--futures N] [--quick] [--single] | bench [fixtures] | sim [--games N] [--seed0 S] [--policy value|steer|solver] [--scores out.txt] | info | train [--games N] --out model.json | gate a.txt b.txt   (--threads N, --model m.json|none on any)");
             std::process::exit(if cmd == "help" || cmd == "--help" { 0 } else { 2 });
         }
     }
@@ -116,9 +139,14 @@ fn sim(args: &[String]) {
         p => fail(&format!("unknown policy {p}")),
     };
     let t = Instant::now();
-    use rayon::prelude::*;
-    let mut scores: Vec<i64> = (seed0..seed0 + games).into_par_iter().map(|seed| ultimate_activity(&run_game(seed, &chooser, &picker, None))).collect();
+    let by_seed = train::scores(games, seed0, &chooser, &picker);
     let secs = t.elapsed().as_secs_f64();
+    if let Some(path) = arg::<String>(args, "--scores") {
+        let text: String = by_seed.iter().map(|(seed, score)| format!("{seed} {score}
+")).collect();
+        std::fs::write(&path, text).unwrap_or_else(|e| fail(&format!("{path}: {e}")));
+    }
+    let mut scores: Vec<i64> = by_seed.iter().map(|&(_, s)| s).collect();
     scores.sort();
     let n = scores.len() as f64;
     let mean = scores.iter().sum::<i64>() as f64 / n;

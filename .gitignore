@@ -14,3 +14,8 @@ Thumbs.db
 desktop.ini
 .DS_Store
 __pycache__/
+
+# Board-value training runs (models, game scores)
+/train-runs/
+# Python tools for training (decision trees), kept out of the repo
+/train/

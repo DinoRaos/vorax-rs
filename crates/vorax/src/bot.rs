@@ -58,7 +58,7 @@ pub fn play_opt(s: &GameState, o: &Opt) -> GameState {
 }
 
 #[inline]
-fn pick_and_confirm(s: &GameState, i: usize) -> GameState {
+pub fn pick_and_confirm(s: &GameState, i: usize) -> GameState {
     let x = dispatch(s, Action::SelectCard { index: i as i64 });
     dispatch(&x, Action::Confirm)
 }

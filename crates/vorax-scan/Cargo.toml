@@ -1,6 +1,6 @@
 [package]
 name = "vorax-scan"
-description = "Rust port of tli-vorax-simulator's screen reader: a Surgical Preparation frame into the advisor's ScreenState"
+description = "Screen reader for the Vorax minigame: a Surgical Preparation frame into the Solver's ScreenState"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
