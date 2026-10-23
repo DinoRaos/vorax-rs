@@ -165,8 +165,11 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             if due.is_some() || manual {
                 retries = 0;
             }
-            let animating = read(&capturer, ocr.as_ref(), &mut pipe, trigger, manual || relook, opts.frames.as_deref(), &send);
-            if !animating {
+            // the look again after a pick, to settle the new icon: the board hasn't changed, so the marks stay up
+            // while it reads and only change if what it finds does
+            let quiet = relook && due.is_none() && !manual && again.is_none();
+            let animating = read(&capturer, ocr.as_ref(), &mut pipe, trigger, manual || relook, quiet, opts.frames.as_deref(), &send);
+            if !animating || quiet {
                 retries = 0;
             } else if retries < RETRIES {
                 retries += 1;
@@ -198,12 +201,15 @@ fn last_game_line_age(path: &Path) -> Option<Duration> {
 }
 
 /// Takes a picture, reads it and advises; true when a card was in flight (nothing read).
-fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, now: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> bool {
+#[allow(clippy::too_many_arguments)]
+fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> bool {
     let Some(game) = find_game_window() else {
         note("the game's window isn't open");
         return false;
     };
-    send(ToUi::Busy);
+    if !quiet {
+        send(ToUi::Busy);
+    }
     let t = Instant::now();
     let frame = if now { capturer.grab(game) } else { capturer.grab_stable(game) };
     let frame = match frame {
@@ -244,9 +250,10 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
             let (w, h) = vorax_scan::window::windowed_game(&frame).map_or((frame.width, frame.height), |a| (a.w as usize, a.h as usize));
             send(ToUi::Show(plan, w, h));
         }
+        // the board changed and a card is still moving: the marks stay hidden (the pill dimmed) while it looks again,
+        // rather than the old ones blinking back between looks (2-3 flashes while long effects play out)
         Outcome::Animating => {
-            note(&format!("{}: picture {grabbed} ms, a card was flying off: the last advice stands", trigger.unwrap_or("manual")));
-            send(ToUi::Unbusy);
+            note(&format!("{}: picture {grabbed} ms, a card was flying off: looking again", trigger.unwrap_or("manual")));
         }
         Outcome::Closing => {
             note(&format!("{}: the game closing after the protocols, not a board", trigger.unwrap_or("manual")));
