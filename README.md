@@ -43,8 +43,10 @@ it; there is nothing to install. Windows may say "Windows protected your PC" bec
 click **More info** → **Run anyway**. The release notes list each file's SHA-256 if you want to check your
 download.
 
-The overlay doesn't go online: it advises with the data it was built with (see **Data** below), and a new
-release brings any change.
+**Updates.** At start the overlay asks this project's GitHub releases once whether a newer version is out; nothing
+about you or your games is sent. When there is one, the tray menu offers it with what's new, and **Update now**
+downloads it, checks it against the SHA-256 GitHub gives for it, and restarts into it. It advises with the data
+it was built with (see **Data** below); a new release brings any change.
 
 ## Build from source
 
@@ -75,11 +77,13 @@ Start a Vorax game and the marks appear when the cards settle. Other ways to sta
 | Ctrl+Alt+X | read the board now |
 | Ctrl+Alt+Q | quit |
 
-<img src="docs/menu.png" alt="The tray menu: odds in use, game log status, Show overlay, Read the board now, Intern Shelley level 1-6, marker colour, Open the debug log, Quit" width="252" align="right">
+<img src="docs/menu.png" alt="The tray menu: version and odds in use, game log status, Show overlay, Read the board now, Intern Shelley level 1-6, marker colour, Your runs, Quit" width="252" align="right">
 
 The tray icon's menu has the same, plus your **Intern Shelley level** (1–6, remembered), the marks' colour, the
-odds in use and the debug log (`%APPDATA%\VoraxRs\overlay.log`, with each board read and the advice given: attach
-it when reporting a misread board).
+version and odds in use, and **Your runs**: every run the overlay read, newest first, with its instruments and how
+the odds of reaching 840k went, opened board by board with a click (the advised move, the instruments, the
+tanks). **Raw log** there opens the debug log itself (`%APPDATA%\VoraxRs\overlay.log`): attach it when reporting a
+misread board.
 
 When a card is still flying as the board is read, the overlay looks again a moment later (up to three times),
 and hides its marks rather than leave ones for a board that's gone.
@@ -186,7 +190,7 @@ Solver's full advice at every move takes about 10 s on one core, or 1 s per game
 |---|---|
 | `crates/vorax` | engine (`game.rs`, `context.rs`, `effects.rs`), board value (`value.rs`), bots (`bot.rs`), Solver (`advisor.rs`) |
 | `crates/vorax-scan` | screen reader, instrument tracker and log settler (`scan.rs`, `titles.rs`, `track.rs`, `live.rs`) |
-| `crates/vorax-overlay` | the overlay: `draw.rs` (the marks), `pipeline.rs`, and `app/` (capture, OCR, window, tray menu) |
+| `crates/vorax-overlay` | the overlay: `draw.rs` (the marks), `pipeline.rs`, and `app/` (capture, OCR, window, tray menu, your runs, updates) |
 | `crates/vorax-cli` | the `vorax` command, and training (`train.rs`) |
 | `data/` | cards, odds, the board value (trees); `data/scan/` the reader's references |
 | `fixtures/` | what the tests replay: recorded traces, the linear board value, test screenshots and a game log |

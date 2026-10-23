@@ -3,10 +3,12 @@
 //! Also the tray icon and the hotkeys.
 
 use super::sys::{client_rect, find_game_window, foreground, note, Hwnd, Settings};
-use super::menu::{put, Row};
+use super::menu::{put, wrap, Row};
+use super::update::{self, Release};
 use crate::draw::{render, Fonts, Plan};
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::*;
@@ -29,6 +31,14 @@ pub enum ToUi {
     Quit,
     /// whether the game writes its moves to the log, which the overlay needs to read boards by itself
     GameLog(GameLog),
+    /// a newer release on GitHub (the check at start)
+    Update(Release),
+    /// the update's download, 0-1
+    UpdateProgress(f32),
+    /// the update didn't install: why
+    UpdateFailed(String),
+    /// the update is in place: start it, and close this one
+    Restart(PathBuf),
 }
 
 /// The game's log as the worker sees it.
@@ -71,6 +81,10 @@ const MENU_SHELLEY: u32 = 20;
 const MENU_ACCENT: u32 = 40;
 const MENU_LATER: u32 = 16;
 const MENU_LOG_HELP: u32 = 17;
+/// the update's "what's new" card, installing it, its page on GitHub
+const MENU_UPDATE: u32 = 60;
+const MENU_UPDATE_NOW: u32 = 61;
+const MENU_RELEASE_PAGE: u32 = 62;
 
 struct State {
     hwnd: HWND,
@@ -88,6 +102,13 @@ struct State {
     /// the game's log, once the worker has looked; whether its help card has shown by itself this run
     game_log: Option<GameLog>,
     log_help_shown: bool,
+    /// to send itself what the update's download thread finds
+    to_self: Sender<ToUi>,
+    /// a newer release, and how far its download is
+    update: Option<Release>,
+    updating: Option<f32>,
+    /// the arguments to start the updated overlay with
+    args: Vec<String>,
 }
 
 thread_local! {
@@ -106,7 +127,7 @@ impl Waker {
     }
 }
 
-pub fn create(fonts: Fonts, rx: Receiver<ToUi>, tx: Sender<ToWorker>, settings: Settings) -> windows::core::Result<Waker> {
+pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sender<ToWorker>, settings: Settings, args: Vec<String>) -> windows::core::Result<Waker> {
     unsafe {
         let instance: HINSTANCE = GetModuleHandleW(None)?.into();
         let class = w!("VoraxRsOverlay");
@@ -137,7 +158,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, tx: Sender<ToWorker>, settings: 
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         SetTimer(hwnd, TIMER_FOLLOW, 250, None);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, to_self, update: None, updating: None, args });
         });
         Ok(Waker(Hwnd::of(hwnd)))
     }
@@ -195,6 +216,38 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             if g == GameLog::Off && !std::mem::replace(&mut s.log_help_shown, true) {
                                 log_card(s, true);
                             }
+                        }
+                        ToUi::Update(r) => {
+                            s.update = Some(r);
+                            update_offer(s);
+                        }
+                        ToUi::UpdateProgress(p) => {
+                            s.updating = Some(p);
+                            super::menu::refresh(download_rows(s));
+                        }
+                        ToUi::UpdateFailed(e) => {
+                            s.updating = None;
+                            note(&format!("update failed: {e}"));
+                            let mut rows = vec![Row::Header { title: "Update failed".into(), status: format!("The overlay keeps v{}", update::current()) }];
+                            rows.push(Row::Lines(wrap(&s.fonts, &e, 6)));
+                            rows.push(Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None });
+                            if !super::menu::refresh(rows.clone()) {
+                                super::menu::notify(s.hwnd, rows, s.fonts.clone());
+                            }
+                        }
+                        ToUi::Restart(exe) => {
+                            let mut args: Vec<String> = s.args.iter().filter(|a| *a != "--after-update").cloned().collect();
+                            args.push("--after-update".into());
+                            if std::process::Command::new(&exe).args(args).spawn().is_ok() {
+                                note("restarting into the update");
+                                super::menu::close();
+                                let _ = s.tx.send(ToWorker::Quit);
+                                unsafe {
+                                    let _ = DestroyWindow(s.hwnd);
+                                }
+                                return;
+                            }
+                            let _ = s.to_self.send(ToUi::UpdateFailed(format!("the update is in place but didn't start: start {} yourself", exe.display())));
                         }
                     }
                 }
@@ -270,7 +323,18 @@ fn rerolls_hint(level: i32) -> String {
 /// Opens the tray menu (menu.rs), with the overlay's state as it is now.
 fn tray_menu(hwnd: HWND) {
     let Some((rows, fonts)) = with_state(|s| {
-        let mut rows = vec![Row::Header { title: "Vorax overlay".into(), status: format!("Odds of {}", vorax::data().odds) }];
+        let status = match &s.update {
+            Some(r) => format!("v{} · update available: v{}", update::current(), r.version),
+            None => format!("v{} · odds of {}", update::current(), vorax::data().odds),
+        };
+        let mut rows = vec![Row::Header { title: "Vorax overlay".into(), status }];
+        if let Some(r) = &s.update {
+            let label = match s.updating {
+                Some(p) => format!("Updating to v{}… {:.0}%", r.version, p * 100.0),
+                None => format!("Update to v{}", r.version),
+            };
+            rows.push(Row::Action { id: MENU_UPDATE, label, shortcut: "what's new".into() });
+        }
         match s.game_log {
             Some(GameLog::On) => rows.push(Row::Text("Game log on: boards are read by themselves".into())),
             Some(GameLog::Off) => {
@@ -290,7 +354,7 @@ fn tray_menu(hwnd: HWND) {
         rows.push(Row::Levels { base: MENU_SHELLEY, level: s.settings.shelley, hint: rerolls_hint });
         rows.push(Row::Colors { base: MENU_ACCENT, selected: s.settings.accent });
         rows.push(Row::Separator);
-        rows.push(Row::Action { id: MENU_LOG, label: "Open the debug log".into(), shortcut: String::new() });
+        rows.push(Row::Action { id: MENU_LOG, label: "Your runs".into(), shortcut: "the log".into() });
         rows.push(Row::Separator);
         rows.push(Row::Action { id: MENU_QUIT, label: "Quit".into(), shortcut: "Ctrl+Alt+Q".into() });
         (rows, s.fonts.clone())
@@ -330,6 +394,76 @@ fn log_card(s: &State, by_tray: bool) {
     }
 }
 
+/// A newer release, offered once by the tray without taking the game's focus.
+fn update_offer(s: &State) {
+    let Some(r) = &s.update else { return };
+    note(&format!("update available: v{} (this is v{})", r.version, update::current()));
+    let rows = vec![
+        Row::Header { title: "Update available".into(), status: format!("v{} is out · you have v{}", r.version, update::current()) },
+        Row::Buttons { primary: (MENU_UPDATE, "What's new".into()), secondary: Some((MENU_LATER, "Later".into())) },
+    ];
+    super::menu::notify(s.hwnd, rows, s.fonts.clone());
+}
+
+/// The release's notes, with the choice to install it now.
+fn whats_new(s: &State) {
+    let Some(r) = &s.update else { return };
+    if s.updating.is_some() {
+        return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+    }
+    let rows = vec![
+        Row::Header { title: format!("What's new in v{}", r.version), status: format!("You have v{}", update::current()) },
+        Row::Lines(wrap(&s.fonts, &r.notes, 18)),
+        Row::Action { id: MENU_RELEASE_PAGE, label: "The release on GitHub".into(), shortcut: "open".into() },
+        Row::Buttons { primary: (MENU_UPDATE_NOW, "Update now".into()), secondary: Some((MENU_LATER, "Later".into())) },
+    ];
+    super::menu::open(s.hwnd, rows, s.fonts.clone());
+}
+
+/// The update's card while it downloads.
+fn download_rows(s: &State) -> Vec<Row> {
+    let (v, p) = (s.update.as_ref().map_or(String::new(), |r| r.version.clone()), s.updating.unwrap_or(0.0));
+    vec![
+        Row::Header { title: format!("Updating to v{v}"), status: format!("Downloading from github.com/{}", update::REPO) },
+        Row::Progress(p),
+        Row::Text(format!("{:.0}% · then it checks the file and restarts", p * 100.0)),
+    ]
+}
+
+/// Downloads and installs the update on its own thread; its progress and outcome come back as ToUi.
+fn start_update(s: &mut State) {
+    let Some(r) = s.update.clone() else { return };
+    if s.updating.is_some() {
+        return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+    }
+    s.updating = Some(0.0);
+    note(&format!("downloading v{} from {}", r.version, r.page));
+    let (tx, waker) = (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)));
+    std::thread::spawn(move || {
+        unsafe {
+            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+        }
+        let progress_tx = std::sync::Mutex::new(tx.clone());
+        let last = std::sync::atomic::AtomicU32::new(0);
+        let out = update::install(&r, move |p| {
+            // a message per percent, not per packet
+            let pct = (p * 100.0) as u32;
+            if last.swap(pct, std::sync::atomic::Ordering::Relaxed) != pct {
+                if let Ok(t) = progress_tx.lock() {
+                    let _ = t.send(ToUi::UpdateProgress(p));
+                }
+                waker.wake();
+            }
+        });
+        let _ = tx.send(match out {
+            Ok(exe) => ToUi::Restart(exe),
+            Err(e) => ToUi::UpdateFailed(e),
+        });
+        waker.wake();
+    });
+    super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+}
+
 /// A choice from the tray menu.
 unsafe fn command(hwnd: HWND, id: u32) {
     match id {
@@ -344,7 +478,20 @@ unsafe fn command(hwnd: HWND, id: u32) {
             with_state(|s| log_card(s, false));
         }
         MENU_LOG => {
-            let _ = std::process::Command::new("notepad.exe").arg(super::sys::data_dir().join("overlay.log")).spawn();
+            with_state(|s| super::logview::open(s.fonts.clone()));
+        }
+        MENU_UPDATE => {
+            with_state(|s| whats_new(s));
+        }
+        MENU_UPDATE_NOW => {
+            with_state(start_update);
+        }
+        MENU_RELEASE_PAGE => {
+            with_state(|s| {
+                if let Some(r) = &s.update {
+                    let _ = std::process::Command::new("explorer.exe").arg(&r.page).spawn();
+                }
+            });
         }
         MENU_QUIT => quit(hwnd),
         c if (MENU_SHELLEY + 1..=MENU_SHELLEY + 6).contains(&c) => {

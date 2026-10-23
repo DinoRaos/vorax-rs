@@ -21,6 +21,10 @@ pub enum Row {
     Header { title: String, status: String },
     /// a line of text
     Text(String),
+    /// lines of text already wrapped to the card (`wrap`), an empty one a paragraph's gap
+    Lines(Vec<String>),
+    /// a progress bar, 0-1
+    Progress(f32),
     /// one or two buttons at the right: the first filled (the main choice); commands close the card
     Buttons { primary: (u32, String), secondary: Option<(u32, String)> },
     /// a warning line (the game's log off or missing)
@@ -66,6 +70,8 @@ fn height(r: &Row) -> f32 {
         Row::Levels { .. } => 48.0,
         Row::Colors { .. } => 40.0,
         Row::Text(_) => 22.0,
+        Row::Lines(l) => 8.0 + l.iter().map(|t| if t.is_empty() { 8.0 } else { 18.0 }).sum::<f32>(),
+        Row::Progress(_) => 22.0,
         Row::Buttons { .. } => 52.0,
     }
 }
@@ -145,6 +151,27 @@ fn render(m: &Menu) -> Pixmap {
         };
         match row {
             Row::Text(t) => text(&mut pm, &m.fonts.regular, t, 13.0 * s, ox + 16.0 * s, mid + 4.5 * s, (210, 200, 195), 1.0),
+            Row::Lines(lines) => {
+                let mut y = y0 + 4.0 * s;
+                for t in lines {
+                    if t.is_empty() {
+                        y += 8.0 * s;
+                        continue;
+                    }
+                    text(&mut pm, &m.fonts.regular, t, 12.5 * s, ox + 16.0 * s, y + 13.5 * s, (210, 200, 195), 1.0);
+                    y += 18.0 * s;
+                }
+            }
+            Row::Progress(f) => {
+                let (bx, bw, bh) = (ox + 16.0 * s, cw - 32.0 * s, 6.0 * s);
+                if let Some(p) = rounded(bx, mid - bh / 2.0, bw, bh, bh / 2.0) {
+                    pm.fill_path(&p, &paint(rgba(255, 255, 255, 0.10)), FillRule::Winding, Transform::identity(), None);
+                }
+                let fw = (bw * f.clamp(0.0, 1.0)).max(bh);
+                if let Some(p) = rounded(bx, mid - bh / 2.0, fw, bh, bh / 2.0) {
+                    pm.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 0.95)), FillRule::Winding, Transform::identity(), None);
+                }
+            }
             Row::Buttons { primary, secondary } => {
                 let (p, s2) = button_boxes(&m.fonts, primary, secondary.as_ref());
                 let (bh, by) = (32.0 * s, mid - 16.0 * s);
@@ -303,6 +330,57 @@ fn redraw(m: &Menu) {
         let _ = GetWindowRect(m.hwnd, &mut r);
         put(m.hwnd, r.left, r.top, pm.width() as i32, pm.height() as i32, pm.data());
     }
+}
+
+/// `t` in lines that fit the card (12.5 px text), its line breaks kept; at most `max` lines, the last ending in "…".
+pub fn wrap(fonts: &Fonts, t: &str, max: usize) -> Vec<String> {
+    let room = W - 32.0;
+    let mut out: Vec<String> = Vec::new();
+    for para in t.lines() {
+        if para.trim().is_empty() {
+            if out.last().is_some_and(|l| !l.is_empty()) {
+                out.push(String::new());
+            }
+            continue;
+        }
+        let mut line = String::new();
+        for word in para.split_whitespace() {
+            let next = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            if measure(&fonts.regular, &next, 12.5) > room && !line.is_empty() {
+                out.push(std::mem::replace(&mut line, word.to_string()));
+            } else {
+                line = next;
+            }
+        }
+        out.push(line);
+    }
+    while out.last().is_some_and(|l| l.is_empty()) {
+        out.pop();
+    }
+    if out.len() > max {
+        out.truncate(max);
+        if let Some(l) = out.last_mut() {
+            l.push('…');
+        }
+    }
+    out
+}
+
+/// New rows for the card that's open (a download's progress), kept at its bottom right corner: whether one was.
+pub fn refresh(rows: Vec<Row>) -> bool {
+    with(|m| {
+        let mut r = RECT::default();
+        unsafe {
+            let _ = GetWindowRect(m.hwnd, &mut r);
+        }
+        m.rows = rows;
+        m.hover = None;
+        let pm = render(m);
+        let (w, h) = (pm.width() as i32, pm.height() as i32);
+        unsafe { put(m.hwnd, r.right - w, r.bottom - h, w, h, pm.data()) };
+        true
+    })
+    .unwrap_or(false)
 }
 
 /// Opens the menu by the cursor (above it, as the tray sits at the bottom), on top and focused.

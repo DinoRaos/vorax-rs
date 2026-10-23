@@ -3,8 +3,10 @@
 
 mod capture;
 mod menu;
+mod logview;
 mod ocr;
 mod sys;
+mod update;
 mod window;
 mod worker;
 
@@ -36,11 +38,28 @@ pub fn run(args: &[String]) {
     if let Some(i) = args.iter().position(|a| a == "--demo") {
         return demo(args.get(i + 1).filter(|a| !a.starts_with("--")).map(PathBuf::from), arg(args, "--seconds").unwrap_or(15));
     }
+    // the runs window drawn from the debug log into a picture
+    if let Some(i) = args.iter().position(|a| a == "--runs-preview") {
+        let Some(out) = args.get(i + 1) else { return };
+        let Some(fonts) = crate::draw::Fonts::system() else { return };
+        let log = std::fs::read_to_string(sys::data_dir().join("overlay.log")).unwrap_or_default();
+        let pm = logview::preview(&log, std::rc::Rc::new(fonts), 1.0, 760.0);
+        let mut rgba = pm.data().to_vec();
+        for p in rgba.chunks_exact_mut(4) {
+            let a = p[3] as f32 / 255.0;
+            for c in 0..3 {
+                p[c] = (p[c] as f32 + 70.0 * (1.0 - a)).round() as u8;
+            }
+            p[3] = 255;
+        }
+        let _ = crate::pipeline::encode_png(std::path::Path::new(out), pm.width(), pm.height(), &rgba);
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--menu-preview") {
         let Some(out) = args.get(i + 1) else { return };
         let Some(fonts) = crate::draw::Fonts::system() else { return };
         let rows = vec![
-            menu::Row::Header { title: "Vorax overlay".into(), status: format!("Odds of {}", vorax::data().odds) },
+            menu::Row::Header { title: "Vorax overlay".into(), status: format!("v{} · odds of {}", update::current(), vorax::data().odds) },
             menu::Row::Warn("Game log off: boards aren't read by themselves".into()),
             menu::Row::Action { id: 0, label: "How to turn the game's log on".into(), shortcut: String::new() },
             menu::Row::Separator,
@@ -49,7 +68,7 @@ pub fn run(args: &[String]) {
             menu::Row::Levels { base: 0, level: 6, hint: |l| format!("{} instrument rerolls", crate::pipeline::shelley_rerolls(l)) },
             menu::Row::Colors { base: 0, selected: 0 },
             menu::Row::Separator,
-            menu::Row::Action { id: 0, label: "Open the debug log".into(), shortcut: String::new() },
+            menu::Row::Action { id: 0, label: "Your runs".into(), shortcut: "the log".into() },
             menu::Row::Separator,
             menu::Row::Action { id: 0, label: "Quit".into(), shortcut: "Ctrl+Alt+Q".into() },
         ];
@@ -57,7 +76,7 @@ pub fn run(args: &[String]) {
         let plain = args.iter().any(|a| a == "--plain");
         let rows = if plain {
             let mut head = vec![
-                menu::Row::Header { title: "Vorax overlay".into(), status: format!("Odds of {}", vorax::data().odds) },
+                menu::Row::Header { title: "Vorax overlay".into(), status: format!("v{} · odds of {}", update::current(), vorax::data().odds) },
                 menu::Row::Text("Game log on: boards are read by themselves".into()),
             ];
             head.extend(rows.into_iter().skip(3));
@@ -99,11 +118,26 @@ pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--console") {
         std::env::set_var("VORAX_CONSOLE", "1");
     }
+    if args.iter().any(|a| a == "--version") {
+        return println!("vorax-overlay {}", update::current());
+    }
     unsafe {
-        // one overlay at a time
-        let _ = CreateMutexW(None, true, w!("Local\\VoraxRsOverlay"));
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            return;
+        // one overlay at a time (after an update, the one before is still closing: wait for it)
+        let waits = if args.iter().any(|a| a == "--after-update") { 50 } else { 0 };
+        let mut n = 0;
+        loop {
+            let h = CreateMutexW(None, true, w!("Local\\VoraxRsOverlay"));
+            if GetLastError() != ERROR_ALREADY_EXISTS {
+                break;
+            }
+            if let Ok(h) = h {
+                let _ = windows::Win32::Foundation::CloseHandle(h);
+            }
+            n += 1;
+            if n > waits {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
         }
         // physical pixels everywhere, so the overlay lines up with the captured picture at any display scaling
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -121,14 +155,15 @@ pub fn run(args: &[String]) {
         let p = sys::data_dir().join(old);
         let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
     }
-    sys::note(&format!("Vorax overlay started (Intern Shelley level {}, odds of {})", settings.shelley, vorax::data().odds));
+    update::clean_up();
+    sys::note(&format!("Vorax overlay v{} started (Intern Shelley level {}, odds of {})", update::current(), settings.shelley, vorax::data().odds));
     let Some(fonts) = crate::draw::Fonts::system() else {
         sys::note("no Segoe UI or Arial font found");
         return;
     };
     let (to_ui, from_worker) = std::sync::mpsc::channel();
     let (to_worker, from_ui) = std::sync::mpsc::channel();
-    let waker = match window::create(fonts, from_worker, to_worker, settings.clone()) {
+    let waker = match window::create(fonts, from_worker, to_ui.clone(), to_worker, settings.clone(), args.to_vec()) {
         Ok(w) => w,
         Err(e) => {
             sys::note(&format!("overlay window: {e}"));
@@ -137,6 +172,21 @@ pub fn run(args: &[String]) {
     };
     let opts = worker::Options { log: arg::<String>(args, "--log").map(PathBuf::from), shelley: settings.shelley, ocr: settings.ocr, frames: arg::<String>(args, "--frames").map(PathBuf::from) };
     waker.wake();
+    // a newer release on GitHub: offered in the tray menu
+    let (check_tx, check_waker) = (to_ui.clone(), waker);
+    std::thread::spawn(move || {
+        unsafe {
+            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+        }
+        match update::check() {
+            Ok(Some(r)) => {
+                let _ = check_tx.send(window::ToUi::Update(r));
+                check_waker.wake();
+            }
+            Ok(None) => sys::note(&format!("v{} is the latest release", update::current())),
+            Err(e) => sys::note(&format!("couldn't check for a newer release: {e}")),
+        }
+    });
     let worker = std::thread::spawn(move || worker::run(opts, to_ui, waker, from_ui));
     window::run_loop();
     let _ = worker.join();
@@ -234,7 +284,7 @@ fn demo(frame: Option<PathBuf>, seconds: u64) {
     let Some(fonts) = crate::draw::Fonts::system() else { return };
     let (to_ui, from_worker) = std::sync::mpsc::channel();
     let (to_worker, _from_ui) = std::sync::mpsc::channel();
-    let Ok(waker) = window::create(fonts, from_worker, to_worker, sys::Settings { shown: true, ..sys::Settings::default() }) else { return };
+    let Ok(waker) = window::create(fonts, from_worker, to_ui.clone(), to_worker, sys::Settings { shown: true, ..sys::Settings::default() }, vec![]) else { return };
     let _ = to_ui.send(window::ToUi::Show(plan, img.width, img.height));
     waker.wake();
     std::thread::spawn(move || {
