@@ -258,6 +258,8 @@ pub enum Picker {
     Value,
     /// board-aware: every offer (and a reroll) played to the end `playouts` times
     Board { playouts: u32, rollout: Policy, goal: Goal, refresh_playouts: u32 },
+    /// a cheater, for the ceiling: see `Chooser::Oracle`
+    Oracle,
 }
 
 pub fn value_pick(s: &GameState) -> Pick {
@@ -294,8 +296,34 @@ impl Picker {
                     _ => Pick::Card(best),
                 }
             }
+            Picker::Oracle => {
+                let mut choices: Vec<Pick> = (0..s.hand.len()).map(Pick::Card).collect();
+                if can_refresh(s) {
+                    choices.push(Pick::Refresh);
+                }
+                let end = |c: &Pick| real_end(&match c {
+                    Pick::Refresh => dispatch(s, Action::Refresh),
+                    Pick::Card(i) => pick_and_confirm(s, *i),
+                }, seed);
+                let mut best = (choices[0], f64::NEG_INFINITY);
+                for c in &choices {
+                    let v = end(c);
+                    if v > best.1 {
+                        best = (*c, v);
+                    }
+                }
+                best.0
+            }
         }
     }
+}
+
+/// How a game really ends from `s`: played on with its own random draws (the cards and outcomes still to come),
+/// by the steered player (judging boards by their score, as tli-vorax-simulator's ORACLE did), counted up to
+/// TARGET. Only a cheater can know this.
+fn real_end(s: &GameState, seed: u32) -> f64 {
+    let inner = Chooser::Ev(Policy { samples: 2, horizon: 0, roll_samples: None, steer: Some(0.3), value: None });
+    goal_score(ultimate_activity(&finish(s, seed, &inner, &Picker::Value)))
 }
 
 /// The score the advice aims for: 840,000 on the board, which the endgame battle bonus takes to rainbow.
@@ -335,6 +363,9 @@ pub type InstrumentChoice = Pick;
 pub enum Chooser {
     Ev(Policy),
     Plan(LookAhead),
+    /// A cheater, for the ceiling no real player can reach: each option (and a reroll) played to the end with the
+    /// game's real upcoming cards and outcomes, the best real ending taken (tli-vorax-simulator's ORACLE, MIT)
+    Oracle,
 }
 
 impl Chooser {
@@ -347,6 +378,20 @@ impl Chooser {
                     Some(a) => Choice { best: Some(a.o), value: a.now, stay: None },
                     None => Choice { best: None, value: -1.0, stay: None },
                 }
+            }
+            Chooser::Oracle => {
+                let mut opts: Vec<Opt> = options(s).iter().copied().collect();
+                if s.open_box.is_none() && can_refresh(s) {
+                    opts.push(Opt::Refresh);
+                }
+                let mut best = (None, f64::NEG_INFINITY);
+                for o in &opts {
+                    let v = real_end(&play_opt(s, o), seed);
+                    if v > best.1 {
+                        best = (Some(*o), v);
+                    }
+                }
+                Choice { best: best.0, value: f64::INFINITY, stay: None }
             }
         }
     }

@@ -12,23 +12,33 @@ const ICON_MIN: f64 = 0.85;
 const ICON_GAP: f64 = 0.08;
 pub const STARTING_ITEM: &str = "(starting item)";
 
+/// Near black: the square an icon sits on.
+const DARK: u8 = 25;
+/// An icon's square is mostly near black (49–95% measured); an empty slot over the lit scenery has none, yet enough
+/// bright pixels to pass FILLED_MIN (1–7% at 1080p), so it read as an icon: 4 instruments where 3 were held.
+const BACKDROP_MIN: f64 = 0.3;
+
 pub fn holds_an_icon(img: &Img, r: &Rect) -> bool {
     let x0 = r.x.floor();
     let y0 = r.y.floor();
-    let mut n = 0usize;
+    let (mut n, mut dark) = (0usize, 0usize);
     let mut y = y0;
     while y < (img.height as f64).min(y0 + r.h) {
         let mut x = x0;
         while x < (img.width as f64).min(x0 + r.w) {
             let (rr, gg, bb) = img.px(x as usize, y as usize);
-            if rr.max(gg).max(bb) >= BRIGHT {
+            let m = rr.max(gg).max(bb);
+            if m >= BRIGHT {
                 n += 1;
+            }
+            if m < DARK {
+                dark += 1;
             }
             x += 1.0;
         }
         y += 1.0;
     }
-    n as f64 / (r.w * r.h) >= FILLED_MIN
+    n as f64 / (r.w * r.h) >= FILLED_MIN && dark as f64 / (r.w * r.h) >= BACKDROP_MIN
 }
 
 const N: usize = 24;
