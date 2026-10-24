@@ -326,8 +326,9 @@ pub fn conclude(work: &Work, x: &ScreenState, unknown: Vec<String>, t0: Instant,
     let reached = |t: &Tally| t.reached as f64 / t.n as f64;
     let (s, ranking, best, refresh_end, plan) = match work {
         Work::Potion { s, opts, .. } => {
-            let mut ahead: Vec<(Opt, f64, f64)> = opts.iter().zip(tallies).map(|(c, t)| (c.0, mean(t), reached(t))).collect();
-            ahead.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            // options dropped early by halving (fewer futures) rank below the ones kept
+            let mut ahead: Vec<(Opt, f64, f64, u32)> = opts.iter().zip(tallies).map(|(c, t)| (c.0, mean(t), reached(t), t.n)).collect();
+            ahead.sort_by(|a, b| b.3.cmp(&a.3).then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)));
             let reroll = ahead.iter().position(|a| a.0 == Opt::Refresh);
             let refresh_end = reroll.map(|i| End { activity: ahead[i].1, reached: ahead[i].2 });
             let ranked: Vec<Ranked> = ahead
@@ -371,10 +372,22 @@ pub fn conclude(work: &Work, x: &ScreenState, unknown: Vec<String>, t0: Instant,
 
 /// The Solver's advice, with every future played (spread over every core when `par`).
 pub fn advise_plan(x: &ScreenState, futures: Option<u32>, par: bool) -> Advice {
+    advise_halved(x, futures, false, par)
+}
+
+/// `advise_plan`, the potions' futures spread by successive halving when `halving` (`halved_futures`): the same
+/// futures on average, most of them on the close calls between the best options.
+pub fn advise_halved(x: &ScreenState, futures: Option<u32>, halving: bool, par: bool) -> Advice {
     match prepare(x, futures) {
         Prepared::Done(a) => a,
         Prepared::Work { work, x, unknown, t0 } => {
-            let tallies = play_work(&work, 0, work.futures(), par);
+            let tallies = match &work {
+                Work::Potion { s, seed, la, opts, .. } if halving => {
+                    let o: Vec<Opt> = opts.iter().map(|c| c.0).collect();
+                    halved_futures(s, *seed, la, &o, par)
+                }
+                _ => play_work(&work, 0, work.futures(), par),
+            };
             conclude(&work, &x, unknown, t0, &tallies)
         }
     }

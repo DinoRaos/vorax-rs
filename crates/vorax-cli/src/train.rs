@@ -354,3 +354,52 @@ pub fn gate(champion: &str, challenger: &str) {
     println!("the challenger reached {k}k in {gained} games the champion didn't, and missed {lost} it reached (chance of a split like this by luck: {:.1}%)", 100.0 * luck(gained, lost));
     println!("pass={}", if pass { "yes" } else { "no" });
 }
+
+/// A sequential test (Wald's SPRT, as chess engines test their changes): the challenger plays the champion's seeds a
+/// batch at a time, and after each batch the evidence so far is weighed (the games it reached TARGET in and the
+/// champion didn't, against the other way round); it stops once that's clear either way, so a clear result takes a
+/// fraction of the games. H0: each such game goes either way alike; H1: the challenger takes a share `p1` of them
+/// (0.55: about 2 more games in a hundred reaching TARGET). Errors at most 5% each way.
+pub fn duel(champion: &str, chooser: &Chooser, picker: &Picker, max_games: u32, p1: f64, out: Option<&str>) {
+    let champ = read_scores(champion);
+    let mut seeds: Vec<u32> = champ.keys().copied().collect();
+    seeds.sort();
+    seeds.truncate(max_games as usize);
+    let (alpha, beta) = (0.05f64, 0.05f64);
+    let (upper, lower) = (((1.0 - beta) / alpha).ln(), (beta / (1.0 - alpha)).ln());
+    let (win, loss) = ((p1 / 0.5).ln(), ((1.0 - p1) / 0.5).ln());
+    let (mut gained, mut lost, mut played) = (0u32, 0u32, Vec::new());
+    let t = Instant::now();
+    let batch = (rayon::current_num_threads() * 5).max(20);
+    let mut verdict = "no decision within the games given";
+    for chunk in seeds.chunks(batch) {
+        let scores: Vec<(u32, i64)> = chunk.par_iter().map(|&seed| (seed, ultimate_activity(&run_game(seed, chooser, picker, None)))).collect();
+        for &(seed, score) in &scores {
+            let c = champ[&seed];
+            gained += (score >= TARGET && c < TARGET) as u32;
+            lost += (c >= TARGET && score < TARGET) as u32;
+        }
+        played.extend(scores);
+        let llr = gained as f64 * win + lost as f64 * loss;
+        eprint!("\r{} games ({:.0} s): {gained} gained, {lost} lost, evidence {llr:+.2} (better at {upper:+.2}, not better at {lower:+.2})   ", played.len(), t.elapsed().as_secs_f64());
+        if llr >= upper {
+            verdict = "BETTER";
+            break;
+        }
+        if llr <= lower {
+            verdict = "not better";
+            break;
+        }
+    }
+    eprintln!();
+    let n = played.len();
+    let reached = |f: &dyn Fn(&(u32, i64)) -> i64| played.iter().filter(|g| f(g) >= TARGET).count();
+    let (rc, rn) = (reached(&|g| champ[&g.0]), reached(&|g| g.1));
+    let pct = |x: usize| 100.0 * x as f64 / n.max(1) as f64;
+    println!("{n} games: champion {rc} ({:.1}%), challenger {rn} ({:.1}%) reached {}k; {gained} gained, {lost} lost", pct(rc), pct(rn), TARGET / 1000);
+    println!("verdict: {verdict} (sequential test, p1 {p1}, 5% error each way) after {:.0} s", t.elapsed().as_secs_f64());
+    if let Some(path) = out {
+        let text: String = played.iter().map(|(seed, score)| format!("{seed} {score}\n")).collect();
+        std::fs::write(path, text).unwrap_or_else(|e| crate::fail(&format!("{path}: {e}")));
+    }
+}

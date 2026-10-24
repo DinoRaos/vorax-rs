@@ -9,6 +9,8 @@
 //!   vorax train [--games N] [--check M] [--seed0 S] [--eps E] --out model.json   fit a board value on simulated games
 //!   vorax train [--games N] [--seed0 S] [--eps E] --rows boards.bin  the games' boards as raw rows, for decision trees
 //!   vorax gate champion.txt challenger.txt                          a new board value against the one in use
+//!   vorax sim --policy solver [--futures N] [--halving] --against champion.txt [--games MAX] [--p1 0.55]
+//!       a sequential test on the champion's seeds: stops as soon as the challenger is clearly better or not
 //! Data: what the build embedded (data/). --model <model.json|none> on any command uses another board value
 //! (none: boards judged by their score); for train, it's the board value the training games are played by.
 
@@ -135,8 +137,10 @@ fn sim(args: &[String]) {
         "solver" => {
             // --futures N: futures per option for potions and instruments (the Solver's default: 64)
             let n: u32 = arg(args, "--futures").unwrap_or(advisor::INSTRUMENT_FUTURES);
+            // --halving: the potions' futures by successive halving (the same number on average)
+            let halving = args.iter().any(|a| a == "--halving").then_some(true);
             (
-                Chooser::Plan(LookAhead { playouts: n, ..advisor::LOOK_AHEAD }),
+                Chooser::Plan(LookAhead { playouts: n, halving, ..advisor::LOOK_AHEAD }),
                 Picker::Board { playouts: n, rollout: Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) }, goal: Goal::Target, refresh_playouts: n },
             )
         }
@@ -144,6 +148,13 @@ fn sim(args: &[String]) {
         "oracle" => (Chooser::Oracle, Picker::Oracle),
         p => fail(&format!("unknown policy {p}")),
     };
+    // --against champion.txt: a sequential test on the champion's seeds, stopping once the answer is clear
+    if let Some(champion) = arg::<String>(args, "--against") {
+        let out: Option<String> = arg(args, "--scores");
+        // every seed the champion played unless --games says fewer
+        let most = arg::<u32>(args, "--games").unwrap_or(u32::MAX);
+        return train::duel(&champion, &chooser, &picker, most, arg(args, "--p1").unwrap_or(0.55), out.as_deref());
+    }
     let t = Instant::now();
     let by_seed = train::scores(games, seed0, &chooser, &picker);
     let secs = t.elapsed().as_secs_f64();

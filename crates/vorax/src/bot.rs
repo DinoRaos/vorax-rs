@@ -501,7 +501,8 @@ pub struct LookAhead {
     pub inner_samples: Option<u32>,
     #[serde(default)]
     pub value: Option<bool>,
-    /// successive halving: 8 futures for every option, 16 more for the better half, 32 more for the best 2
+    /// successive halving: `playouts` futures per option on average, spread over rounds that each drop the worse
+    /// half of the options left (`halved_futures`)
     #[serde(default)]
     pub halving: Option<bool>,
 }
@@ -549,6 +550,35 @@ pub fn potion_futures(s: &GameState, seed: u32, la: &LookAhead, opts: &[Opt], fr
     })
 }
 
+/// Successive halving (Karnin, Koren & Somekh, 2013): `la.playouts` futures per option on average, spread over
+/// ⌈log₂ n⌉ rounds; after each, the worse half of the options left is dropped, so the close calls between the best
+/// get the most futures for the same total. An option dropped keeps the tally of its fewer futures. Futures are
+/// numbered as in `potion_futures`, so the options left always play the same ones (common random numbers).
+pub fn halved_futures(s: &GameState, seed: u32, la: &LookAhead, opts: &[Opt], par: bool) -> Vec<Tally> {
+    let n = opts.len();
+    let mut tallies = vec![Tally::default(); n];
+    if n == 0 {
+        return tallies;
+    }
+    let rounds = ((usize::BITS - (n - 1).leading_zeros()) as u64).max(1);
+    let total = la.playouts as u64 * n as u64;
+    let mean = |t: &Tally| t.goal / t.n.max(1) as f64;
+    let mut alive: Vec<usize> = (0..n).collect();
+    for round in 0..rounds {
+        let each = (total / (rounds * alive.len() as u64)).max(1) as u32;
+        let from = tallies[alive[0]].n;
+        let these: Vec<Opt> = alive.iter().map(|&i| opts[i]).collect();
+        for (&i, t) in alive.iter().zip(potion_futures(s, seed, la, &these, from, from + each, par)) {
+            tallies[i].add(&t);
+        }
+        if round + 1 < rounds {
+            alive.sort_by(|&a, &b| mean(&tallies[b]).partial_cmp(&mean(&tallies[a])).unwrap_or(std::cmp::Ordering::Equal));
+            alive.truncate(alive.len().div_ceil(2));
+        }
+    }
+    tallies
+}
+
 pub fn look_ahead(s: &GameState, seed: u32, la: &LookAhead, par: bool) -> Vec<Ahead> {
     struct Run {
         o: Opt,
@@ -562,16 +592,9 @@ pub fn look_ahead(s: &GameState, seed: u32, la: &LookAhead, par: bool) -> Vec<Ah
         r.t.add(&t);
     };
     if la.halving.unwrap_or(false) {
-        let mut alive: Vec<usize> = (0..runs.len()).collect();
-        let first_keep = 2.max(runs.len().div_ceil(2));
-        for (n, keep) in [(8, first_keep), (16, 2), (32, 0)] {
-            for &i in &alive {
-                play_more(&mut runs[i], n);
-            }
-            if keep > 0 {
-                alive.sort_by(|&a, &b| mean(&runs[b]).partial_cmp(&mean(&runs[a])).unwrap_or(std::cmp::Ordering::Equal));
-                alive.truncate(keep);
-            }
+        let opts: Vec<Opt> = runs.iter().map(|r| r.o).collect();
+        for (r, t) in runs.iter_mut().zip(halved_futures(s, seed, la, &opts, par)) {
+            r.t = t;
         }
     } else {
         for r in runs.iter_mut() {
