@@ -14,6 +14,11 @@ use vorax_scan::{scan, scan_data};
 
 pub type TextReader<'a> = Option<&'a mut dyn FnMut(&Img) -> String>;
 
+/// Futures per option the Solver plays for the overlay's advice. More futures make close calls less a matter of
+/// luck in the Solver's own playouts: on the same seeds with the full Solver, 64 reached 840k in 72.1% of games,
+/// 128 in 76.0%, 256 in 79.2% (Oct 23, 2026), and the hardest recorded board takes about 0.24 s on 12 cores.
+pub const FUTURES: u32 = 256;
+
 pub enum Outcome {
     /// not the Surgical Preparation screen
     NotGame,
@@ -77,7 +82,7 @@ impl Pipeline {
             reading.state.instrument_refreshes = None;
         }
         self.fill_rerolls(&mut reading);
-        let advice = advise_plan(&reading.state, None, true);
+        let advice = advise_plan(&reading.state, Some(FUTURES), true);
         Some((plan_for(&advice, &reading.state, &reading, &layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0))), w, h))
     }
 
@@ -140,7 +145,7 @@ impl Pipeline {
         reading.state.shelley = Some(self.shelley);
         self.fill_rerolls(&mut reading);
         let read_ms = t.elapsed().as_secs_f64() * 1000.0;
-        let advice = advise_plan(&reading.state, None, true);
+        let advice = advise_plan(&reading.state, Some(FUTURES), true);
         let plan = plan_for(&advice, &reading.state, &reading, &layout_at(img.width, img.height, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)));
         self.last = Some((reading.clone(), img.width, img.height));
         Outcome::Advice { reading: Box::new(reading), advice: Box::new(advice), plan, read_ms }
