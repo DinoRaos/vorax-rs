@@ -1,6 +1,6 @@
 //! The game data (data/game.json, data/boardValue.json): cards, instruments and the odds as of Oct 22, 2026, and the
-//! board value, trained with `vorax train` (decision trees; the tests use the linear one in fixtures/). Embedded at
-//! build time.
+//! board value (linear, 656 weights per round: with the Solver's many futures it plays as well as trained trees, and
+//! five times faster). Embedded at build time.
 
 use crate::effects;
 use crate::types::{EventType, Rarity, Settings};

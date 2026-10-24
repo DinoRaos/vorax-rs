@@ -10,9 +10,8 @@ reroll) to take, the tanks to target, and how often that line reaches 840k.
 ![The overlay during a Vorax round: a cyan outline on the Anesthetic Tincture - Agito card, tank 2's glass glowing cyan, and the pill "Anesthetic Tincture - Agito → tank 2 · 33% reach 840k" at the top](docs/overlay.jpg)
 
 Inspired by CoffeeBns's Tartarus Simulator and tidewarden's Vorax Solver (see [Credits](#credits)). Under the
-overlay is a game engine, Solver and screen reader in Rust, with a board value trained on 1.5 million simulated
-games (see [The board value](#the-board-value)), and a Solver that plays 256 imagined games to the end for every
-option (see [How far the Solver looks ahead](#how-far-the-solver-looks-ahead)).
+overlay is a game engine, Solver and screen reader in Rust, and a Solver that plays 1,024 imagined games to the
+end for every option (see [How far the Solver looks ahead](#how-far-the-solver-looks-ahead)).
 
 **Read-only.** It reads the game window and the game's log file and draws on top. It never clicks or presses
 keys, and it doesn't inject into or change the game: you make every move (see [AGENTS.md](AGENTS.md)). Changes
@@ -113,28 +112,30 @@ offer this game, the level's.
 ## How far the Solver looks ahead
 
 For every option (each card on its best tanks, the next best plays, a reroll) the Solver plays imagined games to
-the end: random next hands from the card odds, random outcomes, later choices by the board value. It counts how
-many reach 840k (the "% reach 840k" in the pill) and advises the option that did best. Each imagined game is one
-"future"; the more of them, the less a close call between two options comes down to luck in the Solver's own
-futures. On the same games played with the Solver's full advice:
+the end: random next hands from the card odds, random outcomes, later choices judged by the board value (see
+below). It counts how many reach 840k (the "% reach 840k" in the pill) and advises the option that did best. Each
+imagined game is one "future"; the more of them, the less a close call between two options comes down to luck in
+the Solver's own futures. The same 3,000 games, played with the Solver's full advice:
 
-| Futures per option | Reached 840k | Hardest recorded board, 12 threads |
-|---|---|---|
-| 64 (before v0.2.0) | 72.1% | 0.07 s |
-| 128 | 76.0% | 0.12 s |
-| **256 (built in)** | **79.2%** | **0.22 s** |
-| 512 | 81.0% | 0.43 s |
+| Board value | Futures per option | Reached 840k | Hardest recorded board, 12 threads |
+|---|---|---|---|
+| Linear | 64 | 69.3% | 0.01 s |
+| Trees | 64 | 71.8% | 0.06 s |
+| Linear | 256 | 78.9% | 0.05 s |
+| Trees | 256 (v0.2.0) | 79.2% | 0.28 s |
+| Trees | 512 | 81.0% | 0.55 s |
+| **Linear (built in)** | **1,024** | **81.5%** | **0.20 s** |
 
-256 against 64: 7 more games in a hundred reach 840k (a split that uneven by luck is less than a 0.1% chance). 512
-adds about 2 more, at twice the time, which slower PCs would feel; 256 is the overlay's choice. On fewer cores the
-time grows in proportion (8 threads: about 0.35 s on the hardest board), most boards being several times faster.
+From 64 to 1,024 futures, 12 more games in a hundred reach 840k (a split that uneven by luck is less than a 0.1%
+chance); against v0.2.0, 2.3 more (1.4%), with the advice ready sooner. On fewer cores the time grows in
+proportion (8 threads: about 0.3 s on the hardest board), most boards being several times faster.
 
 ## Why Rust
 
 An overlay that sits next to the game all evening asks for:
 
 - **Speed.** The Solver's look-ahead plays out many futures for every option, and every future rates thousands of
-  boards; on all cores even the hardest board's advice is ready in about a quarter second. The game state is a
+  boards; on all cores even the hardest board's advice is ready in about a fifth of a second. The game state is a
   fixed-size value that copies in a single memcpy, and [rayon](https://github.com/rayon-rs/rayon) spreads the
   futures over every core.
 - **Reading in about 0.5 s.**
@@ -146,24 +147,21 @@ An overlay that sits next to the game all evening asks for:
 
 ## The board value
 
-The Solver judges where a board is headed by its board value: the final score (counted up to 840k) that games
-from a board like it tend to reach, given its monsters, instruments and round. The one built in is 120 decision
-trees (gradient boosting, fitted with [LightGBM](https://github.com/microsoft/LightGBM)) on 30 million boards from
-1.5 million simulated games under the built-in odds. Against the linear board value the Solver started with, on
-the same 6,000 games played with the Solver's full advice (then at 64 futures per option, see below):
+Inside the futures, the Solver judges where a board is headed by its board value: the final score (counted up to
+840k) that games from a board like it tend to reach, given its monsters, instruments and round. The one built in
+is linear, 656 weights per round, fitted on simulated games.
 
-| Board value | Reached 840k | Average counted to 840k |
-|---|---|---|
-| Linear (656 weights per round) | 68.9% | 771,122 |
-| **Trees (built in)** | **72.1%** | **774,617** |
-
-The trees reached 840k in 1,175 games the linear one didn't, and missed 986 it reached; a split that uneven by
-luck is less than a 0.1% chance.
+We also trained 120 decision trees (gradient boosting, fitted with [LightGBM](https://github.com/microsoft/LightGBM))
+on 30 million boards from 1.5 million simulated games. With 64 futures per option they did better: 72.1% of 6,000
+games reached 840k against 68.9% (luck: less than 0.1%), and v0.1.6 to v0.2.0 shipped them. With more futures the
+Solver leans on the board value less, and at 256 the two are even (79.2% and 78.9% of 3,000 games, luck: 80%),
+while the trees take five times as long to evaluate. So the time goes into futures: the linear board value at
+1,024 futures beats the trees at 256 and matches them at 512 (table above).
 
 ```powershell
 .\target\release\vorax train --games 2000000 --out linear.json    # a linear board value, fitted here
 .\target\release\vorax train --games 1500000 --rows boards.bin    # boards as rows, for fitting trees
-.\target\release\vorax sim --policy solver --futures 256 --games 6000 --model a.json --scores a.txt
+.\target\release\vorax sim --policy solver --futures 1024 --games 3000 --model a.json --scores a.txt
 .\target\release\vorax gate built-in.txt a.txt                    # seed by seed: more games reaching 840k?
 ```
 
@@ -173,7 +171,7 @@ luck is less than a 0.1% chance.
 .\target\release\vorax advise screen.json      # the Solver's advice for a screen (ScreenState JSON)
 .\target\release\vorax advise --quick < s.json # this round's expected score only
 .\target\release\vorax read shot.png --advise  # read a screenshot of the game (and advise on it)
-.\target\release\vorax sim --games 1000 --policy value   # value | steer | solver (--futures N, as the overlay: 256)
+.\target\release\vorax sim --games 1000 --policy value   # value | steer | solver (--futures N, as the overlay: 1024)
 .\target\release\vorax bench fixtures          # advice timings on the 8 recorded screens
 .\target\release\vorax info                    # the data in use
 ```
@@ -196,15 +194,14 @@ play differently by accident:
   the log settler on a recorded game log.
 
 Everything matches exactly, floats included. The tests play with the linear board value the traces were recorded
-with (`fixtures/boardValue-linear.json`), not the trees the program ships, and also check that a board's features
-give exactly what the linear board value computes.
+with (`fixtures/boardValue-linear.json`, the one built in), and also check that a board's features give exactly
+what it computes.
 
 ## Speed
 
-Solver advice on the 8 recorded screens with the built-in trees and 256 futures: up to 0.22 s a screen on 12 threads
-(0.84 s for all 8), up to about 1.7 s on one core. Whole games: about 3,500 a second with the board-value bot; a
-game with the Solver's full advice at every move (256 futures) takes about 4 s per game when 12 cores each play
-their own.
+Solver advice on the 8 recorded screens with 1,024 futures: up to 0.2 s a screen on 12 threads, up to about 1.4 s
+on one core. Whole games: about 20,000 a second with the board-value bot; a game with the Solver's full advice at
+every move (1,024 futures) takes about 3 s per game when 12 cores each play their own.
 
 ## Layout
 
@@ -214,7 +211,7 @@ their own.
 | `crates/vorax-scan` | screen reader, instrument tracker and log settler (`scan.rs`, `titles.rs`, `track.rs`, `live.rs`) |
 | `crates/vorax-overlay` | the overlay: `draw.rs` (the marks), `pipeline.rs`, and `app/` (capture, OCR, window, tray menu, your runs, updates) |
 | `crates/vorax-cli` | the `vorax` command, and training (`train.rs`) |
-| `data/` | cards, odds, the board value (trees); `data/scan/` the reader's references |
+| `data/` | cards, odds, the board value; `data/scan/` the reader's references |
 | `fixtures/` | what the tests replay: recorded traces, the linear board value, test screenshots and a game log |
 
 ## Credits

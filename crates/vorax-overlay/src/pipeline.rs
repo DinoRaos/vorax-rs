@@ -15,9 +15,11 @@ use vorax_scan::{scan, scan_data};
 pub type TextReader<'a> = Option<&'a mut dyn FnMut(&Img) -> String>;
 
 /// Futures per option the Solver plays for the overlay's advice. More futures make close calls less a matter of
-/// luck in the Solver's own playouts: on the same seeds with the full Solver, 64 reached 840k in 72.1% of games,
-/// 128 in 76.0%, 256 in 79.2% (Oct 23, 2026), and the hardest recorded board takes about 0.24 s on 12 cores.
-pub const FUTURES: u32 = 256;
+/// luck in the Solver's own playouts. On the same 3,000 seeds with the full Solver (Oct 24, 2026): the linear board
+/// value at 1024 futures reached 840k in 81.5% of games, the trained trees at 256 in 79.2% and at 512 in 81.0%;
+/// the linear one is about five times faster to evaluate, so 1024 of its futures take less time than 256 with the
+/// trees (the hardest recorded board: about 0.2 s on 12 threads).
+pub const FUTURES: u32 = 1024;
 
 pub enum Outcome {
     /// not the Surgical Preparation screen
