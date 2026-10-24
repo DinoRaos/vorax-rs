@@ -49,6 +49,17 @@ pub struct Pipeline {
     pub resumed: bool,
 }
 
+/// Whether the screen opening is the game under way going on rather than a new one, from the round of the board
+/// before (`before`) and the round now read for sure (`now`). A new game starts in round 1, and none goes on past
+/// round 13. Icons in the instrument panel prove nothing: a new game can start with an item from the map in it
+/// (a boss drop), read as the nearest instrument; taken for the game under way, it stayed in as an instrument.
+fn resumes(before: Option<i32>, now: Option<i32>) -> bool {
+    match (before, now) {
+        (Some(b), Some(n)) => n > 1 && b < 13 && n >= b,
+        _ => false,
+    }
+}
+
 /// Instrument rerolls a game starts with, by Intern Shelley level (src/data/shelley.ts).
 pub fn shelley_rerolls(level: i32) -> i32 {
     [0, 1, 1, 2, 2, 2].get((level - 1).clamp(0, 5) as usize).copied().unwrap_or(0)
@@ -113,11 +124,11 @@ impl Pipeline {
         if raw.has(|p| matches!(p, Problem::NotFound)) {
             return Outcome::NotGame;
         }
-        // the screen opened again on the game under way (Escape and back skips long animations): a new game starts in
-        // round 1 with an empty instrument panel, so icons in the panel or a round past 1 mean the same game goes on,
-        // and what's known of it (instruments and their rounds, rerolls) is kept
+        // the screen opened again on the game under way (Escape and back skips long animations): what's known of it
+        // (instruments and their rounds, rerolls) is kept
         let round_sure = raw.fields.get("round").is_some_and(|f| f.sure);
-        self.resumed = trigger == Some("screen") && self.last.is_some() && (!raw.state.instruments.is_empty() || (round_sure && raw.state.round.unwrap_or(1) > 1));
+        let before = self.last.as_ref().and_then(|(r, ..)| r.state.round);
+        self.resumed = trigger == Some("screen") && resumes(before, round_sure.then_some(raw.state.round.unwrap_or(1)));
         let trigger = if self.resumed { None } else { trigger };
         if trigger == Some("screen") {
             self.instrument_refreshes = None;
@@ -189,4 +200,29 @@ pub fn encode_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result
     enc.set_depth(png::BitDepth::Eight);
     let mut wr = enc.write_header().map_err(|e| e.to_string())?;
     wr.write_image_data(rgba).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resumes;
+
+    #[test]
+    fn the_screen_opened_again_mid_game_goes_on() {
+        assert!(resumes(Some(6), Some(6)));
+        assert!(resumes(Some(6), Some(7)));
+        assert!(resumes(Some(12), Some(12)));
+    }
+
+    #[test]
+    fn a_new_game_is_a_new_game() {
+        // a new game starts in round 1, whatever is in the instrument panel (a boss drop from the map)
+        assert!(!resumes(Some(13), Some(1)));
+        assert!(!resumes(Some(6), Some(1)));
+        // nothing goes on after round 13, nor back in rounds, nor when the round isn't read for sure
+        assert!(!resumes(Some(13), Some(13)));
+        assert!(!resumes(Some(8), Some(5)));
+        assert!(!resumes(Some(6), None));
+        // the overlay's first board
+        assert!(!resumes(None, Some(6)));
+    }
 }

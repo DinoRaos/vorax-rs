@@ -118,9 +118,9 @@ fn parse(text: &str) -> Vec<Run> {
             score,
         };
         // a new run: when the round goes back (a new game), or after the screen closed when it opens on a new game
-        // (round 1, an empty instrument panel); opened again on the game under way (Escape and back, to skip long
-        // animations), the run goes on
-        let fresh = round <= 1 && board.instruments.is_empty();
+        // (round 1, whatever is in the instrument panel: a new game can start with a boss drop in it); opened again on
+        // the game under way (Escape and back, to skip long animations), the run goes on
+        let fresh = round <= 1;
         let new = runs.last().is_none_or(|r| round < r.last().round) || (!open && fresh);
         if new {
             runs.push(Run { at, boards: Vec::new() });
