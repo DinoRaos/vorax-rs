@@ -150,7 +150,7 @@ The Solver judges where a board is headed by its board value: the final score (c
 from a board like it tend to reach, given its monsters, instruments and round. The one built in is 120 decision
 trees (gradient boosting, fitted with [LightGBM](https://github.com/microsoft/LightGBM)) on 30 million boards from
 1.5 million simulated games under the built-in odds. Against the linear board value the Solver started with, on
-the same 6,000 games played with the Solver's full advice:
+the same 6,000 games played with the Solver's full advice (then at 64 futures per option, see below):
 
 | Board value | Reached 840k | Average counted to 840k |
 |---|---|---|
@@ -163,7 +163,7 @@ luck is less than a 0.1% chance.
 ```powershell
 .\target\release\vorax train --games 2000000 --out linear.json    # a linear board value, fitted here
 .\target\release\vorax train --games 1500000 --rows boards.bin    # boards as rows, for fitting trees
-.\target\release\vorax sim --policy solver --games 6000 --model a.json --scores a.txt
+.\target\release\vorax sim --policy solver --futures 256 --games 6000 --model a.json --scores a.txt
 .\target\release\vorax gate built-in.txt a.txt                    # seed by seed: more games reaching 840k?
 ```
 
@@ -173,7 +173,7 @@ luck is less than a 0.1% chance.
 .\target\release\vorax advise screen.json      # the Solver's advice for a screen (ScreenState JSON)
 .\target\release\vorax advise --quick < s.json # this round's expected score only
 .\target\release\vorax read shot.png --advise  # read a screenshot of the game (and advise on it)
-.\target\release\vorax sim --games 1000 --policy value   # value | steer | solver
+.\target\release\vorax sim --games 1000 --policy value   # value | steer | solver (--futures N, as the overlay: 256)
 .\target\release\vorax bench fixtures          # advice timings on the 8 recorded screens
 .\target\release\vorax info                    # the data in use
 ```
@@ -202,8 +202,9 @@ give exactly what the linear board value computes.
 ## Speed
 
 Solver advice on the 8 recorded screens with the built-in trees and 256 futures: up to 0.22 s a screen on 12 threads
-(0.84 s for all 8), up to about 1.7 s on one core. Whole games: about 3,500 a second with the board-value bot; a game with the
-Solver's full advice at every move takes about 10 s on one core, or 1 s per game when 12 cores each play their own.
+(0.84 s for all 8), up to about 1.7 s on one core. Whole games: about 3,500 a second with the board-value bot; a
+game with the Solver's full advice at every move (256 futures) takes about 4 s per game when 12 cores each play
+their own.
 
 ## Layout
 
