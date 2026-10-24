@@ -163,7 +163,13 @@ while the trees take five times as long to evaluate. So the time goes into futur
 .\target\release\vorax train --games 1500000 --rows boards.bin    # boards as rows, for fitting trees
 .\target\release\vorax sim --policy solver --futures 1024 --games 3000 --model a.json --scores a.txt
 .\target\release\vorax gate built-in.txt a.txt                    # seed by seed: more games reaching 840k?
+.\target\release\vorax sim --policy solver --futures 1024 --model b.json --against a.txt   # stops once it's clear
 ```
+
+`--against` is a sequential test (as chess engines test their changes): the challenger plays the champion's games a
+batch at a time and stops as soon as it's clearly better or not (5% error each way), so a clear result takes a
+fraction of the games. One idea it ruled out: spending the futures by successive halving (dropping the worse half
+of the options round by round) reached 840k in 80.1% of 1,440 games against 81.6% for every option alike.
 
 ## The `vorax` command
 

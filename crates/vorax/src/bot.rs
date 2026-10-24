@@ -554,6 +554,9 @@ pub fn potion_futures(s: &GameState, seed: u32, la: &LookAhead, opts: &[Opt], fr
 /// ⌈log₂ n⌉ rounds; after each, the worse half of the options left is dropped, so the close calls between the best
 /// get the most futures for the same total. An option dropped keeps the tally of its fewer futures. Futures are
 /// numbered as in `potion_futures`, so the options left always play the same ones (common random numbers).
+/// Tested at 1,024 futures on average against every option getting 1,024 (Oct 24, 2026): not better, 80.1% of 1,440
+/// games reached 840k against 81.6%. With about five options, all good ones from the shortlist, little goes to the
+/// poor ones anyway, and an option dropped early can't come back; so the overlay plays every option alike.
 pub fn halved_futures(s: &GameState, seed: u32, la: &LookAhead, opts: &[Opt], par: bool) -> Vec<Tally> {
     let n = opts.len();
     let mut tallies = vec![Tally::default(); n];
